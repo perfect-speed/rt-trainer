@@ -1,4 +1,4 @@
-# RT Trainer v0.6.1 – Realtime voice prototype
+# RT Trainer v0.6.2 – Realtime voice prototype
 
 This iteration changes the ATC speech architecture. It keeps all existing readback validation and Swedish ASR behaviour, but adds a Realtime audio path intended to recover the natural radio feel observed in the earlier Kalmar–Jönköping conversational prototype.
 

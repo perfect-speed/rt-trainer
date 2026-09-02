@@ -208,7 +208,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _speechError = 'Uppläsningen kunde inte startas automatiskt. Tryck på LYSSNA IGEN.';
+        _speechError = 'Ljudfel: ${error.toString().replaceFirst('Bad state: ', '')}';
       });
     } finally {
       if (mounted) setState(() => _isSpeakingAtc = false);

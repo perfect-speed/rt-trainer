@@ -57,11 +57,76 @@ function normalizeSpeechTranscript(value) {
     .trim();
 }
 
+const swedishSpellingWords = {
+  adam: 'a', bertil: 'b', cesar: 'c', david: 'd', erik: 'e', filip: 'f',
+  gustav: 'g', helge: 'h', ivar: 'i', johan: 'j', kalle: 'k', ludvig: 'l',
+  martin: 'm', niklas: 'n', olof: 'o', petter: 'p', qvintus: 'q', rudolf: 'r',
+  sigurd: 's', tore: 't', urban: 'u', viktor: 'v', wilhelm: 'w', xerxes: 'x',
+  yngve: 'y', zäta: 'z', zake: 'z', åke: 'å', 'ärlig': 'ä', östen: 'ö',
+};
+
+const swedishDigits = {
+  noll: '0', nolla: '0', ett: '1', två: '2', tvåa: '2', tre: '3', trea: '3',
+  fyra: '4', fem: '5', femma: '5', sex: '6', sexa: '6', sju: '7', åtta: '8',
+  nio: '9', nia: '9',
+};
+
+function canonicalSpeechTokens(value) {
+  const raw = normalizeSpeechTranscript(value)
+    .replace(/q\s*n\s*h\b/g, 'qnh')
+    .replace(/q\s*n\s*helge\b/g, 'qnh');
+
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  const result = [];
+  let spellingRun = '';
+
+  const flushSpelling = () => {
+    if (spellingRun) {
+      result.push(`letters:${spellingRun}`);
+      spellingRun = '';
+    }
+  };
+
+  for (const token of tokens) {
+    if (swedishSpellingWords[token]) {
+      spellingRun += swedishSpellingWords[token];
+      continue;
+    }
+    if (/^[a-zåäö]$/i.test(token) && token !== 'i') {
+      spellingRun += token;
+      continue;
+    }
+    flushSpelling();
+
+    if (swedishDigits[token] !== undefined) {
+      result.push(swedishDigits[token]);
+    } else if (/^\d+$/.test(token)) {
+      for (const d of token) result.push(d);
+    } else if (token === 'komma' || token === 'punkt') {
+      result.push('decimal');
+    } else {
+      result.push(token);
+    }
+  }
+  flushSpelling();
+  return result;
+}
+
 function transcriptMatchesScript(transcript, script) {
-  const a = normalizeSpeechTranscript(transcript);
-  const b = normalizeSpeechTranscript(script);
-  if (!a || !b) return false;
-  return a === b;
+  const a = canonicalSpeechTokens(transcript);
+  const b = canonicalSpeechTokens(script);
+  if (!a.length || !b.length) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function transcriptFromCompletedResponse(response) {
+  const parts = [];
+  for (const item of response?.output || []) {
+    for (const content of item?.content || []) {
+      if (typeof content?.transcript === 'string') parts.push(content.transcript);
+    }
+  }
+  return parts.join(' ').trim();
 }
 
 function generateRealtimeSpeech(normativeText, spokenScript, attempt = 1) {
@@ -157,7 +222,7 @@ function generateRealtimeSpeech(normativeText, spokenScript, attempt = 1) {
               `NORMATIV KONTEXT (får inte ändras eller kompletteras): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.6.1-locked-speech' },
+            metadata: { purpose: 'rt-trainer-v0.6.2-locked-speech' },
           },
         }));
         return;
@@ -180,6 +245,7 @@ function generateRealtimeSpeech(normativeText, spokenScript, attempt = 1) {
 
       if (event.type === 'response.done') {
         clearTimeout(timeout);
+        if (!transcript.trim()) transcript = transcriptFromCompletedResponse(event.response);
         if (event.response?.status === 'failed') {
           return fail(new Error(event.response?.status_details?.error?.message || 'Realtime response failed.'));
         }
@@ -209,7 +275,7 @@ async function generateGuardedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.1', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.2', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {

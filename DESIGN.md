@@ -1,4 +1,4 @@
-# RT Trainer v0.6.1 – Realtime voice architecture prototype
+# RT Trainer v0.6.2 – Realtime voice architecture prototype
 
 ## Design principle
 
@@ -6,7 +6,7 @@
 
 v0.5.x established a deterministic world state, deterministic readback validation, Swedish ASR normalization and a conventional text-to-speech layer. Repeated tuning improved pronunciation but produced diminishing returns in prosody.
 
-v0.6.1 deliberately changes the speech architecture rather than adding more TTS exceptions.
+v0.6.2 deliberately changes the speech architecture rather than adding more TTS exceptions.
 
 ## Architecture
 
@@ -32,13 +32,13 @@ The previous chain was:
 
 `scenario -> phonetic rewrite -> generic TTS -> audio`
 
-This gave explicit pronunciation control, but callsigns and information groups often inherited uniform synthetic spacing. v0.6.1 instead sends the normative transmission directly to a Realtime audio model with domain instructions. The hypothesis is that a native audio model can preserve more natural rhythm and grouping than a TTS system reading a heavily phonetic script.
+This gave explicit pronunciation control, but callsigns and information groups often inherited uniform synthetic spacing. v0.6.2 instead sends the normative transmission directly to a Realtime audio model with domain instructions. The hypothesis is that a native audio model can preserve more natural rhythm and grouping than a TTS system reading a heavily phonetic script.
 
 ## A/B baseline
 
 The v0.5.5 TTS path is intentionally retained. The UI has a compact switch between:
 
-- **RÖST · REALTIME** – v0.6.1 experimental speech path, default.
+- **RÖST · REALTIME** – v0.6.2 experimental speech path, default.
 - **RÖST · TTS BAS** – v0.5.5-style deterministic pronunciation + TTS baseline.
 
 This is not intended as a learner-facing feature long term. It creates a controlled comparison during development and later supports formal expert rating.
@@ -58,8 +58,11 @@ Candidate comparison dimensions:
 
 v0.5.5 is frozen as the conventional TTS baseline for this comparison.
 
-## v0.6.1 — Locked wording, generative prosody
+## v0.6.2 — Locked wording, generative prosody
 
 Realtime no longer owns wording. The deterministic Swedish RT formatter produces an exact spoken script (for example Swedish spelling-alphabet words and `Q N Helge`). Realtime owns only prosody and voice realization.
 
-The backend also collects the model's output-audio transcript and rejects/retries a response if the spoken words differ from the exact script. This is a content guard against additions such as an unassigned transponder code. In research terms, v0.6.1 narrows generative freedom from **expression** to **prosodic realization**.
+The backend also collects the model's output-audio transcript and rejects/retries a response if the spoken words differ from the exact script. This is a content guard against additions such as an unassigned transponder code. In research terms, v0.6.2 narrows generative freedom from **expression** to **prosodic realization**.
+
+## v0.6.2 speech guard correction
+v0.6.1 compared the Realtime output transcript to the deterministic spoken script as near-literal text. That was too brittle: a correct spoken transmission can be transcribed with compact letters/numbers or alternative orthography. v0.6.2 canonicalizes spelling words, digits and QNH before comparison and also reads the completed-response transcript if no transcript delta was received. Unexpected extra content still fails the guard; harmless transcription formatting no longer should.
