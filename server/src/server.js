@@ -492,7 +492,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.7.0-natural-whole-utterance',
+              purpose: 'rt-trainer-v0.7.1-qnh-pronunciation-lock',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -617,7 +617,7 @@ async function generateDeterministicTtsPcm(spokenScript, { reason = 'fallback' }
       'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
       'Läs EXAKT manuset. Lägg inte till, ta bort eller korrigera någon information.',
       'Svenska bokstaveringsord och sifferord ska uttalas precis som de står.',
-      'När texten innehåller Q N Helge: uttala Q som svenska bokstaven ku, N som svenska bokstaven enn, därefter Helge.',
+      'När talmanuset innehåller ku enn Helge är detta en intern uttalsanvisning för den svenska radiotelefonifrasen Q N Helge. Säg kompakt "ku enn Helge". Byt aldrig ku mot ka eller K.',
       'Behåll ett naturligt men kompakt radiotempo.',
     ].join(' '),
         response_format: 'pcm',
@@ -756,7 +756,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               'Det exakta talmanuset är normativt låst. Säg alla ord och värden i manuset, i samma ordning, och inget annat.',
               'Lägg aldrig till hjälpord som svara, kod, ställ in, sätt, bekräfta eller andra ord som inte står i talmanuset.',
               'Svenska bokstaveringsord ska uttalas naturligt och kompakt som en anropssignal, utan extra paus efter Sigurd Erik.',
-              'När talmanuset innehåller Q N Helge: uttala Q som svenska bokstaven ku, N som svenska bokstaven enn, följt av Helge.',
+              'När talmanuset innehåller ku enn Helge är detta en intern uttalsanvisning för svenska Q N Helge. Uttala exakt "ku enn Helge" kompakt och naturligt. Säg aldrig ka, K eller KN Helge.',
               'Sifferord ska vara tydliga men inte överartikulerade. Slutför alltid sista siffran helt.',
               'Du får variera prosodin men inte ordalydelsen eller det operativa innehållet.',
             ].join(' '),
@@ -781,7 +781,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               `NORMATIV REFERENS (ändra inget): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.7.0-natural-whole-utterance', attempt: String(attempt) },
+            metadata: { purpose: 'rt-trainer-v0.7.1-qnh-pronunciation-lock', attempt: String(attempt) },
           },
         }));
         return;
@@ -937,7 +937,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.7.0', speechDefault: 'realtime', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.7.1', speechDefault: 'realtime', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -949,7 +949,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.7.0', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.7.1', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {

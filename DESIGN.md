@@ -1,4 +1,4 @@
-# RT Trainer v0.7.0 — Natural whole-utterance speech
+# RT Trainer v0.7.1 — QNH pronunciation stabilization
 
 ## Design hypothesis
 
@@ -31,3 +31,8 @@ Recover the natural whole-utterance prosody seen in v0.6.0 while retaining the r
 - The assumption that more generation constraints automatically improve the learner experience.
 
 The new control principle is: **control acceptance, not prosody.**
+
+
+## v0.7.1 change
+
+The whole-utterance architecture is unchanged. Only the speech-realization form for the fixed QNH label changes from the ambiguous graphemic cue `Q N Helge` to the acoustic Swedish cue `ku enn Helge`. The normative world-state representation remains `QNH`; validators still compare operational values independently. This isolates pronunciation tuning from phraseology and scenario truth.

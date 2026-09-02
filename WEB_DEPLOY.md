@@ -1,4 +1,4 @@
-# RT Trainer v0.7.0 – web deployment
+# RT Trainer v0.7.1 – web deployment
 
 ## 1. Test Flutter source
 
@@ -14,7 +14,7 @@ git commit -m "Add backend warmup and speech latency diagnostics"
 git push
 ```
 
-Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports `version: 0.7.0`.
+Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports `version: 0.7.1`.
 
 ## 3. Verify locally against Render
 
@@ -37,7 +37,7 @@ In Render logs inspect `Warm-up ping`, `Speech request received`, `Realtime segm
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add docs
-git commit -m "Build RT Trainer v0.7.0 web"
+git commit -m "Build RT Trainer v0.7.1 web"
 git push
 ```
 

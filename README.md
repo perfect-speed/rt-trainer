@@ -1,6 +1,6 @@
-# RT Trainer v0.7.0
+# RT Trainer v0.7.1
 
-Experimental Swedish PPL radiotelephony trainer. v0.7.0 returns to natural complete Realtime utterances and performs deterministic post-validation before playback. Warm-up and exact replay caching from v0.6.10 are retained.
+Experimental Swedish PPL radiotelephony trainer. v0.7.1 keeps the natural whole-utterance architecture from v0.7.0 and stabilizes the Swedish QNH pronunciation. The normative scenario still stores `QNH`; only the internal speech-realization layer uses the acoustic cue `ku enn Helge` so Realtime is less likely to produce `KN Helge`. Warm-up, post-validation and exact replay caching are unchanged.
 
 Run locally against the deployed backend:
 
