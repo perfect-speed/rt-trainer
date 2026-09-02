@@ -71,4 +71,21 @@ void main() {
     expect(normalized, contains('bana 01 qnh 1013'));
     expect(normalized, contains('transponder 4272'));
   });
+
+  test('accepts clarified Swedish radiotelephony digit forms', () {
+    const ryd = ExpectedReadback(
+      callsign: 'SE-RYD',
+      runway: '01',
+      qnh: '1013',
+      squawk: '4272',
+    );
+    final normalized = normalizer.normalize(
+      'Bana nolla ett QNH ett nolla ett trea, transponder fyra tvåa sju tvåa, Sigurd Erik Rudolf Yngve David.',
+      ryd,
+    );
+    expect(normalized, contains('bana 01 qnh 1013'));
+    expect(normalized, contains('transponder 4272'));
+    expect(normalized, endsWith('SE-RYD.'));
+  });
+
 }

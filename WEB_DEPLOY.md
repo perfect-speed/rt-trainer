@@ -1,56 +1,38 @@
-# RT Trainer v0.5 Demo – webbpublicering
+# RT Trainer v0.5.1 – web deployment
 
-Arkitektur:
+Frontend: GitHub Pages from `main/docs`.
+Backend: existing Render service `rt-trainer-api`.
 
-- Flutter-webbappen publiceras med GitHub Pages.
-- Node-backend publiceras separat och innehåller OpenAI-nyckeln.
-- API-nyckeln får aldrig läggas i Flutter-koden, `docs/` eller GitHub.
+## 1. Update source and backend
 
-## 1. Backend
+Commit/push the v0.5.1 source. Render should redeploy because `server/src/server.js` now includes `/api/speech`.
 
-Projektet innehåller `render.yaml` för en Node-webbtjänst.
+Check:
 
-När backend är publicerad ska `/health` svara med JSON där `ok` är `true` och `openaiConfigured` är `true`.
+`https://rt-trainer-api.onrender.com/health`
 
-Miljövariabler på backend:
+Expected: `{"ok":true,"openaiConfigured":true}`.
 
-- `OPENAI_API_KEY` = hemlig API-nyckel
-- `OPENAI_TRANSCRIBE_MODEL` = `gpt-4o-transcribe`
-- `OPENAI_MODEL` = `gpt-5.4-mini`
-- `ALLOWED_ORIGIN` = `https://perfect-speed.github.io,http://localhost:5000`
-
-Spara backendens publika HTTPS-adress, t.ex. `https://rt-trainer-api.example.com`.
-
-## 2. Bygg GitHub Pages-versionen
-
-Från projektroten i PowerShell:
+## 2. Build GitHub Pages frontend
 
 ```powershell
-.\deploy_web.ps1 -BackendUrl "https://DIN-BACKEND-ADRESS" -RepoName "rt-trainer"
+.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 ```
 
-Skriptet kör tester, bygger Flutter för GitHub Pages och kopierar resultatet till `docs/`.
+The script runs `flutter pub get`, `flutter test`, builds for `/rt-trainer/`, copies the result to `docs/`, and creates `docs/.nojekyll`.
 
-## 3. Git
+Then:
 
 ```powershell
 git add .
-git commit -m "Publish RT Trainer v0.5 demo"
+git commit -m "Publish RT Trainer v0.5.1 mobile + TTS"
 git push
 ```
 
-På GitHub: Settings → Pages → Deploy from a branch → `main` → `/docs`.
+## 3. Verify
 
-Förväntad adress:
+GitHub Actions / Pages should finish green. Then test:
 
 `https://perfect-speed.github.io/rt-trainer/`
 
-## 4. Testpilot
-
-Testa länken i Chrome/Edge och tillåt mikrofon. Testpiloten behöver inget OpenAI-konto och ser aldrig API-nyckeln.
-
-## Säkerhet
-
-- `server/.env` är fortsatt ignorerad av Git.
-- Backend har request-rate-limit.
-- OpenAI-krediter/budget bör hållas låga under pilotfasen.
+Use a real phone in both portrait and landscape orientation and verify the audio prompt, `VISA TEXT`, and PTT flow.

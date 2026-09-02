@@ -6,8 +6,8 @@ class SpokenRtNormalizer {
   static const _digits = <String, String>{
     'zero': '0', 'oh': '0', 'one': '1', 'two': '2', 'three': '3',
     'four': '4', 'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
-    'noll': '0', 'ett': '1', 'en': '1', 'två': '2', 'tva': '2', 'tre': '3',
-    'fyra': '4', 'fem': '5', 'sex': '6', 'sju': '7', 'åtta': '8', 'atta': '8', 'nio': '9',
+    'noll': '0', 'nolla': '0', 'ett': '1', 'en': '1', 'två': '2', 'tva': '2', 'tvåa': '2', 'tvaa': '2', 'tre': '3', 'trea': '3',
+    'fyra': '4', 'fem': '5', 'femma': '5', 'sex': '6', 'sexa': '6', 'sju': '7', 'åtta': '8', 'atta': '8', 'nio': '9', 'nia': '9',
   };
 
   /// Svenskt bokstaveringsalfabet. Alternativa ASR-stavningar hanteras där
@@ -84,7 +84,7 @@ class SpokenRtNormalizer {
   }
 
   String _normalizeDigitSequenceAfter(String input, RegExp prefix, {required int maxDigits}) {
-    const digitWords = 'zero|oh|one|two|three|four|five|six|seven|eight|nine|noll|ett|en|två|tva|tre|fyra|fem|sex|sju|åtta|atta|nio';
+    const digitWords = 'three|seven|eight|zero|four|five|nine|one|two|six|oh|nolla|tvåa|tvaa|trea|femma|sexa|nia|noll|ett|en|två|tva|tre|fyra|fem|sex|sju|åtta|atta|nio';
 
     // Match only the actual number tokens after the keyword. In v0.4.3 the
     // regex also consumed the whitespace after the last spoken digit. That

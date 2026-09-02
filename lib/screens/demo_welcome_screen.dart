@@ -11,11 +11,11 @@ class DemoWelcomeScreen extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 520 ? 10 : 20),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
               child: Container(
-                padding: const EdgeInsets.all(26),
+                padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 520 ? 16 : 26),
                 decoration: BoxDecoration(
                   color: AppTheme.panel,
                   borderRadius: BorderRadius.circular(24),
@@ -24,28 +24,10 @@ class DemoWelcomeScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: AppTheme.accent,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Icon(Icons.flight, color: AppTheme.background),
-                        ),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('RT TRAINER', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                              Text('Demo v0.5 · svensk radiotelefoni', style: TextStyle(color: AppTheme.textMuted)),
-                            ],
-                          ),
-                        ),
-                        Container(
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final mobile = c.maxWidth < 520;
+                        final badge = Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: AppTheme.warning.withValues(alpha: .12),
@@ -53,19 +35,46 @@ class DemoWelcomeScreen extends StatelessWidget {
                             border: Border.all(color: AppTheme.warning.withValues(alpha: .35)),
                           ),
                           child: const Text('TESTVERSION', style: TextStyle(color: AppTheme.warning, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: .7)),
-                        ),
-                      ],
+                        );
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: mobile ? 42 : 48,
+                                  height: mobile ? 42 : 48,
+                                  decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(14)),
+                                  child: const Icon(Icons.flight, color: AppTheme.background),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
+                                      const Text('Demo v0.5.1 · svensk radiotelefoni', style: TextStyle(color: AppTheme.textMuted)),
+                                    ],
+                                  ),
+                                ),
+                                if (!mobile) badge,
+                              ],
+                            ),
+                            if (mobile) ...[const SizedBox(height: 10), badge],
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Syftet med demon är att prova om radioträningen känns naturlig, om taligenkänningen uppfattar svensk fraseologi och om återkopplingen hjälper dig att upptäcka fel.',
+                      'Syftet med demon är att prova om radioträningen känns naturlig. ATC läses upp som ljud, du svarar med PTT och återkopplingen hjälper dig att upptäcka sak- och fraseologifel.',
                       style: TextStyle(fontSize: 16, height: 1.45),
                     ),
                     const SizedBox(height: 22),
                     const _DemoPoint(
                       icon: Icons.mic_none,
-                      title: 'Använd PTT som i radion',
-                      text: 'Håll knappen intryckt medan du talar och släpp när sändningen är klar.',
+                      title: 'Lyssna först – svara sedan med PTT',
+                      text: 'ATC-meddelandet läses upp. Håll PTT intryckt medan du svarar och släpp när sändningen är klar. Texten kan visas som stöd.',
                     ),
                     const _DemoPoint(
                       icon: Icons.record_voice_over_outlined,

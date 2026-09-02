@@ -40,6 +40,27 @@ class TrainerApi {
     return text;
   }
 
+  Future<Uint8List> synthesizeSpeech({
+    required String text,
+  }) async {
+    if (!isConfigured) {
+      throw StateError('RT_API_URL är inte konfigurerad.');
+    }
+    final uri = Uri.parse('$baseUrl/api/speech');
+    final response = await http.post(
+      uri,
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    if (response.statusCode != 200) {
+      throw StateError('Taluppläsning misslyckades (${response.statusCode}).');
+    }
+    if (response.bodyBytes.isEmpty) {
+      throw StateError('Ingen ljuddata returnerades.');
+    }
+    return response.bodyBytes;
+  }
+
   Future<String?> enrichDebrief({
     required String transmission,
     required Map<String, dynamic> validatedFacts,

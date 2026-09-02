@@ -13,5 +13,9 @@ services:
         value: gpt-4o-transcribe
       - key: OPENAI_MODEL
         value: gpt-5.4-mini
+      - key: OPENAI_TTS_MODEL
+        value: gpt-4o-mini-tts
+      - key: OPENAI_TTS_VOICE
+        value: alloy
       - key: ALLOWED_ORIGIN
         value: https://perfect-speed.github.io,http://localhost:5000

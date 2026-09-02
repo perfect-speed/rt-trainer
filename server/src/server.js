@@ -70,6 +70,35 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
+app.post('/api/speech', async (req, res) => {
+  if (!client) {
+    return res.status(503).json({ error: 'OpenAI API is not configured.' });
+  }
+
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
+  if (!text) {
+    return res.status(400).json({ error: 'Speech text missing.' });
+  }
+
+  try {
+    const speech = await client.audio.speech.create({
+      model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+      voice: process.env.OPENAI_TTS_VOICE || 'alloy',
+      input: text,
+      instructions: 'Tala tydlig neutral svensk flygradiotelefoni. När sifferord anges, uttala dem exakt som skrivna. Använd det förtydligade svenska radiouttalet nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Behåll tydliga pauser mellan siffergrupper och bokstaveringsord. Lägg inte till eller rätta någon information.',
+      response_format: 'mp3',
+    });
+
+    const buffer = Buffer.from(await speech.arrayBuffer());
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return res.send(buffer);
+  } catch (error) {
+    console.error(error);
+    return res.status(502).json({ error: 'Speech generation failed.' });
+  }
+});
+
 app.post('/api/debrief', async (req, res) => {
   const { transmission, validatedFacts } = req.body ?? {};
   if (typeof transmission !== 'string' || !validatedFacts || typeof validatedFacts !== 'object') {

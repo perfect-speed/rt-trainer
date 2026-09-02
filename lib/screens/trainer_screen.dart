@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../models/scenario_models.dart';
 import '../services/readback_validator.dart';
 import '../services/asr_quality_assessor.dart';
@@ -26,6 +27,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   final _voiceRecorder = VoiceRecorder();
   final _api = TrainerApi();
   final _speechNormalizer = SpokenRtNormalizer();
+  final _audioPlayer = AudioPlayer();
   final _events = <RadioEvent>[];
 
   static const _drillSteps = <TrainingStep>[
@@ -34,6 +36,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Grundläggande återläsning',
       instruction: 'Fristående övning: läs tillbaka bana, QNH, transponderkod och anropssignal.',
       atcTransmission: 'SE-KQX, bana 01, QNH 1016, transponder 4255.',
+      spokenTransmission: 'Sigurd Erik Kalle Qvintus Xerxes, bana nolla ett, QNH ett nolla ett sexa, transponder fyra tvåa femma femma.',
       expected: ExpectedReadback(callsign: 'SE-KQX', runway: '01', qnh: '1016', squawk: '4255'),
       coachNote: 'Detta är en mikroövning. Tidigare radiotrafik modelleras inte.',
     ),
@@ -42,6 +45,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Ny QNH och transponderkod',
       instruction: 'Värdena ändras. Läs tillbaka exakt de objekt som gavs.',
       atcTransmission: 'SE-GLA, QNH 1018, transponder 4261.',
+      spokenTransmission: 'Sigurd Erik Gustav Ludvig Adam, QNH ett nolla ett åtta, transponder fyra tvåa sexa ett.',
       expected: ExpectedReadback(callsign: 'SE-GLA', qnh: '1018', squawk: '4261'),
     ),
     TrainingStep(
@@ -49,6 +53,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Bana och QNH',
       instruction: 'Denna gång finns inget krav på transponderkod. Läs bara tillbaka det som faktiskt gavs.',
       atcTransmission: 'SE-VPT, bana 19, QNH 1009.',
+      spokenTransmission: 'Sigurd Erik Viktor Petter Tore, bana ett nia, QNH ett nolla nolla nia.',
       expected: ExpectedReadback(callsign: 'SE-VPT', runway: '19', qnh: '1009'),
     ),
     TrainingStep(
@@ -56,6 +61,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Frekvensbyte',
       instruction: 'Läs tillbaka den nya frekvensen och anropssignalen.',
       atcTransmission: 'SE-MBN, kontakta Sweden Control 124.725.',
+      spokenTransmission: 'Sigurd Erik Martin Bertil Niklas, kontakta Sweden Control ett tvåa fyra komma sju tvåa femma.',
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-MBN', frequency: '124.725'),
     ),
@@ -64,6 +70,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Kombinerad återläsning',
       instruction: 'Längre transmission. Prioritera korrekt innehåll framför hastighet.',
       atcTransmission: 'SE-RYD, bana 01, QNH 1013, transponder 4272.',
+      spokenTransmission: 'Sigurd Erik Rudolf Yngve David, bana nolla ett, QNH ett nolla ett trea, transponder fyra tvåa sju tvåa.',
       expected: ExpectedReadback(callsign: 'SE-RYD', runway: '01', qnh: '1013', squawk: '4272'),
     ),
   ];
@@ -76,6 +83,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Etablerad kontakt',
       instruction: 'Du är SE-KQX. Kontakten är etablerad och du taxar för avgång. Läs tillbaka ATC.',
       atcTransmission: 'SE-KQX, bana 19, QNH 1009.',
+      spokenTransmission: 'Sigurd Erik Kalle Qvintus Xerxes, bana ett nia, QNH ett nolla nolla nia.',
       expected: ExpectedReadback(callsign: 'SE-KQX', runway: '19', qnh: '1009'),
       coachNote: 'Scenario: tidigare tillstånd finns kvar när du går vidare.',
     ),
@@ -84,6 +92,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'ATC förkortar anropssignalen',
       instruction: 'ATC har nu introducerat den förkortade anropssignalen. Full eller korrekt förkortad form accepteras.',
       atcTransmission: 'S-QX, transponder 4261.',
+      spokenTransmission: 'Sigurd Qvintus Xerxes, transponder fyra tvåa sexa ett.',
       expected: ExpectedReadback(callsign: 'SE-KQX', squawk: '4261', allowAbbreviatedCallsign: true),
     ),
     TrainingStep(
@@ -91,6 +100,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Frekvensbyte',
       instruction: 'Kommunikationen fortsätter i samma scenario. Läs tillbaka frekvensen.',
       atcTransmission: 'S-QX, kontakta Sweden Control 124.725.',
+      spokenTransmission: 'Sigurd Qvintus Xerxes, kontakta Sweden Control ett tvåa fyra komma sju tvåa femma.',
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-KQX', frequency: '124.725', allowAbbreviatedCallsign: true),
     ),
@@ -110,6 +120,9 @@ class _TrainerScreenState extends State<TrainerScreen> {
   String? _lastInterpretedTranscript;
   String? _voiceError;
   String? _asrWarning;
+  bool _showAtcPromptText = false;
+  bool _isSpeakingAtc = false;
+  String? _speechError;
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
   TrainingStep get _step => _steps[_stepIndex];
@@ -125,18 +138,24 @@ class _TrainerScreenState extends State<TrainerScreen> {
   void dispose() {
     _controller.dispose();
     _voiceRecorder.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
   void _startCurrentStep({required bool resetHistory}) {
     if (resetHistory) _events.clear();
-    _events.add(RadioEvent(time: DateTime.now(), speaker: 'ATC', text: _step.atcTransmission));
+    _events.add(RadioEvent(time: DateTime.now(), speaker: 'ATC', text: _step.atcTransmission, isPrompt: true));
     _result = null;
     _controller.clear();
     _lastRawTranscript = null;
     _lastInterpretedTranscript = null;
     _voiceError = null;
     _asrWarning = null;
+    _showAtcPromptText = false;
+    _speechError = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _speakCurrentAtc();
+    });
   }
 
   void _switchMode(PracticeMode mode) {
@@ -165,6 +184,28 @@ class _TrainerScreenState extends State<TrainerScreen> {
       _result = result;
       _controller.clear();
     });
+  }
+
+
+  Future<void> _speakCurrentAtc() async {
+    if (_isSpeakingAtc || !_api.isConfigured) return;
+    final spoken = _step.spokenTransmission ?? _step.atcTransmission;
+    setState(() {
+      _isSpeakingAtc = true;
+      _speechError = null;
+    });
+    try {
+      final bytes = await _api.synthesizeSpeech(text: spoken);
+      await _audioPlayer.stop();
+      await _audioPlayer.play(BytesSource(bytes));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _speechError = 'Uppläsningen kunde inte startas automatiskt. Tryck på LYSSNA IGEN.';
+      });
+    } finally {
+      if (mounted) setState(() => _isSpeakingAtc = false);
+    }
   }
 
 
@@ -393,15 +434,25 @@ class _TrainerScreenState extends State<TrainerScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 960;
+            final compact = constraints.maxWidth < 1100 || constraints.maxHeight < 760;
+            final veryCompact = constraints.maxWidth < 720 || constraints.maxHeight < 620;
+            final wide = !compact;
             return Column(
               children: [
-                _Header(mode: _mode, onModeChanged: _switchMode),
-                if (!_sessionComplete) _ProgressHeader(mode: _mode, stepIndex: _stepIndex, count: _steps.length, step: _step),
+                _Header(mode: _mode, onModeChanged: _switchMode, compact: compact, veryCompact: veryCompact),
+                if (!_sessionComplete)
+                  _ProgressHeader(
+                    mode: _mode,
+                    stepIndex: _stepIndex,
+                    count: _steps.length,
+                    step: _step,
+                    compact: compact,
+                    veryCompact: veryCompact,
+                  ),
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(wide ? 20 : 12, 8, wide ? 20 : 12, 14),
-                    child: _sessionComplete ? _completionView() : (wide ? _wideLayout() : _narrowLayout()),
+                    padding: EdgeInsets.fromLTRB(wide ? 20 : 8, veryCompact ? 3 : 8, wide ? 20 : 8, veryCompact ? 6 : 14),
+                    child: _sessionComplete ? _completionView() : (wide ? _wideLayout() : _narrowLayout(compact: compact, veryCompact: veryCompact)),
                   ),
                 ),
               ],
@@ -421,19 +472,23 @@ class _TrainerScreenState extends State<TrainerScreen> {
         ],
       );
 
-  Widget _narrowLayout() => Column(
+  Widget _narrowLayout({required bool compact, required bool veryCompact}) => Column(
         children: [
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, icon: Icon(Icons.radio), label: Text('RADIO')),
-              ButtonSegment(value: 1, icon: Icon(Icons.map_outlined), label: Text('SITUATION')),
-            ],
-            selected: {_mobileView},
-            onSelectionChanged: (v) => setState(() => _mobileView = v.first),
-            showSelectedIcon: false,
+          SizedBox(
+            height: veryCompact ? 38 : 44,
+            child: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, icon: Icon(Icons.radio, size: 18), label: Text('RADIO')),
+                ButtonSegment(value: 1, icon: Icon(Icons.map_outlined, size: 18), label: Text('SITUATION')),
+              ],
+              selected: {_mobileView},
+              onSelectionChanged: (v) => setState(() => _mobileView = v.first),
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            ),
           ),
-          const SizedBox(height: 10),
-          Expanded(child: _mobileView == 0 ? _radioPanel() : _flightPanel()),
+          SizedBox(height: veryCompact ? 5 : 8),
+          Expanded(child: _mobileView == 0 ? _radioPanel(compact: compact, veryCompact: veryCompact) : _flightPanel()),
         ],
       );
 
@@ -470,8 +525,8 @@ class _TrainerScreenState extends State<TrainerScreen> {
         ],
       );
 
-  Widget _radioPanel() => Container(
-        padding: const EdgeInsets.all(16),
+  Widget _radioPanel({bool compact = false, bool veryCompact = false}) => Container(
+        padding: EdgeInsets.all(veryCompact ? 9 : compact ? 12 : 16),
         decoration: BoxDecoration(
           color: const Color(0xFF0D161F),
           borderRadius: BorderRadius.circular(22),
@@ -482,18 +537,44 @@ class _TrainerScreenState extends State<TrainerScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.radio, color: AppTheme.accent),
+                Icon(Icons.radio, color: AppTheme.accent, size: veryCompact ? 20 : 24),
                 const SizedBox(width: 8),
-                Expanded(child: Text(_isScenario ? 'Radio · Scenario' : 'Radio · Övning', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+                Expanded(child: Text(_isScenario ? 'Radio · Scenario' : 'Radio · Övning', style: TextStyle(fontSize: veryCompact ? 15 : 18, fontWeight: FontWeight.w700))),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: EdgeInsets.symmetric(horizontal: veryCompact ? 8 : 10, vertical: veryCompact ? 4 : 6),
                   decoration: BoxDecoration(color: AppTheme.panelElevated, borderRadius: BorderRadius.circular(10)),
-                  child: Text(_step.frequency, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text(_step.frequency, style: TextStyle(fontWeight: FontWeight.w700, fontSize: veryCompact ? 12 : 14)),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (_step.coachNote != null)
+            SizedBox(height: veryCompact ? 6 : 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: _isSpeakingAtc ? null : _speakCurrentAtc,
+                  icon: _isSpeakingAtc
+                      ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.volume_up_outlined, size: 18),
+                  label: Text(_isSpeakingAtc ? 'LADDAR LJUD…' : 'LYSSNA IGEN'),
+                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                ),
+                TextButton.icon(
+                  onPressed: () => setState(() => _showAtcPromptText = !_showAtcPromptText),
+                  icon: Icon(_showAtcPromptText ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                  label: Text(_showAtcPromptText ? 'DÖLJ TEXT' : 'VISA TEXT'),
+                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                ),
+              ],
+            ),
+            if (_speechError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(_speechError!, style: const TextStyle(color: AppTheme.warning, fontSize: 11)),
+              ),
+            SizedBox(height: veryCompact ? 5 : 9),
+            if (_step.coachNote != null && !veryCompact)
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(11),
@@ -528,7 +609,21 @@ class _TrainerScreenState extends State<TrainerScreen> {
                             width: 62,
                             child: Text(e.speaker, style: TextStyle(fontWeight: FontWeight.w700, color: e.isError ? AppTheme.danger : (pilot ? AppTheme.accent : AppTheme.warning))),
                           ),
-                          Expanded(child: Text(e.text, style: TextStyle(color: e.isError ? AppTheme.danger : null))),
+                          Expanded(
+                            child: Text(
+                              e.isPrompt && !_showAtcPromptText
+                                  ? 'ATC-meddelande dolt · lyssna på radion.'
+                                  : e.text,
+                              style: TextStyle(
+                                color: e.isError
+                                    ? AppTheme.danger
+                                    : e.isPrompt && !_showAtcPromptText
+                                        ? AppTheme.textMuted
+                                        : null,
+                                fontStyle: e.isPrompt && !_showAtcPromptText ? FontStyle.italic : null,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     );
@@ -536,35 +631,37 @@ class _TrainerScreenState extends State<TrainerScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              enabled: _result?.isComplete != true,
-              minLines: 1,
-              maxLines: 3,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _transmit(),
-              decoration: InputDecoration(
-                hintText: _result?.isComplete == true ? 'Korrekt – gå vidare' : 'Skriv din återläsning här…',
-                prefixIcon: const Icon(Icons.keyboard),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _result?.isComplete == true || _isTranscribing ? null : () => _transmit(),
-                    icon: const Icon(Icons.keyboard),
-                    label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('SKICKA TEXT')),
-                  ),
+            SizedBox(height: veryCompact ? 5 : 10),
+            if (!veryCompact) ...[
+              TextField(
+                controller: _controller,
+                enabled: _result?.isComplete != true,
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _transmit(),
+                decoration: InputDecoration(
+                  hintText: _result?.isComplete == true ? 'Korrekt – gå vidare' : 'Skriv din återläsning här…',
+                  prefixIcon: const Icon(Icons.keyboard),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _result?.isComplete == true || _isTranscribing ? null : () => _transmit(),
+                      icon: const Icon(Icons.keyboard),
+                      label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('SKICKA TEXT')),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
             _pttButton(),
             _voiceStatus(),
-            const SizedBox(height: 12),
+            SizedBox(height: veryCompact ? 6 : 10),
             ReadbackCard(result: _result, onNext: _result?.isComplete == true ? _nextStep : null, isLastStep: _stepIndex == _steps.length - 1),
           ],
         ),
@@ -629,39 +726,52 @@ class _TrainerScreenState extends State<TrainerScreen> {
 }
 
 class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.mode, required this.stepIndex, required this.count, required this.step});
+  const _ProgressHeader({
+    required this.mode,
+    required this.stepIndex,
+    required this.count,
+    required this.step,
+    required this.compact,
+    required this.veryCompact,
+  });
   final PracticeMode mode;
   final int stepIndex;
   final int count;
   final TrainingStep step;
+  final bool compact;
+  final bool veryCompact;
 
   @override
   Widget build(BuildContext context) {
     final label = mode == PracticeMode.drillReadback ? 'ÖVNING · ÅTERLÄSNING' : 'SCENARIO';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 2, 20, 6),
+      padding: EdgeInsets.fromLTRB(compact ? 10 : 20, 2, compact ? 10 : 20, veryCompact ? 3 : 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(color: AppTheme.accent.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
-                child: Text(label, style: const TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: .6)),
-              ),
-              const SizedBox(width: 10),
-              Text('${stepIndex + 1}/$count', style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w700)),
-              const SizedBox(width: 10),
-              Expanded(child: Text(step.title, style: const TextStyle(fontWeight: FontWeight.w700))),
+              if (!veryCompact) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(color: AppTheme.accent.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
+                  child: Text(label, style: const TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: .6)),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Text('${stepIndex + 1}/$count', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: veryCompact ? 12 : 14)),
+              const SizedBox(width: 9),
+              Expanded(child: Text(step.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: veryCompact ? 13 : 14))),
             ],
           ),
-          const SizedBox(height: 5),
-          Text(step.instruction, style: const TextStyle(color: AppTheme.textMuted)),
-          const SizedBox(height: 7),
+          if (!veryCompact) ...[
+            const SizedBox(height: 4),
+            Text(step.instruction, maxLines: compact ? 1 : 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted)),
+          ],
+          SizedBox(height: veryCompact ? 3 : 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(minHeight: 5, value: (stepIndex + 1) / count, backgroundColor: AppTheme.panelElevated, color: AppTheme.accent),
+            child: LinearProgressIndicator(minHeight: veryCompact ? 3 : 5, value: (stepIndex + 1) / count, backgroundColor: AppTheme.panelElevated, color: AppTheme.accent),
           ),
         ],
       ),
@@ -683,30 +793,71 @@ class _Metric extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.mode, required this.onModeChanged});
+  const _Header({
+    required this.mode,
+    required this.onModeChanged,
+    required this.compact,
+    required this.veryCompact,
+  });
   final PracticeMode mode;
   final ValueChanged<PracticeMode> onModeChanged;
+  final bool compact;
+  final bool veryCompact;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
+  Widget build(BuildContext context) {
+    final modeSelector = SegmentedButton<PracticeMode>(
+      segments: [
+        ButtonSegment(
+          value: PracticeMode.drillReadback,
+          label: Text(compact ? 'ÖVNING' : 'ÖVNING · ÅTERLÄSNING'),
+          icon: const Icon(Icons.repeat, size: 18),
+        ),
+        const ButtonSegment(value: PracticeMode.scenario, label: Text('SCENARIO'), icon: Icon(Icons.route_outlined, size: 18)),
+      ],
+      selected: {mode},
+      onSelectionChanged: (values) => onModeChanged(values.first),
+      showSelectedIcon: false,
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+    );
+
+    if (compact) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(veryCompact ? 8 : 10, veryCompact ? 4 : 7, veryCompact ? 8 : 10, 3),
         child: Row(
           children: [
-            Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
-            const SizedBox(width: 11),
-            const Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.5 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            Container(
+              width: veryCompact ? 30 : 34,
+              height: veryCompact ? 30 : 34,
+              decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(10)),
+              child: Icon(Icons.flight, color: AppTheme.background, size: veryCompact ? 18 : 21),
             ),
-            SegmentedButton<PracticeMode>(
-              segments: const [
-                ButtonSegment(value: PracticeMode.drillReadback, label: Text('ÖVNING · ÅTERLÄSNING'), icon: Icon(Icons.repeat)),
-                ButtonSegment(value: PracticeMode.scenario, label: Text('SCENARIO'), icon: Icon(Icons.route_outlined)),
-              ],
-              selected: {mode},
-              onSelectionChanged: (values) => onModeChanged(values.first),
-              showSelectedIcon: false,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                veryCompact ? 'RT TRAINER · v0.5.1' : 'RT TRAINER',
+                style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
+              ),
             ),
+            Flexible(flex: 2, child: modeSelector),
           ],
         ),
       );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
+      child: Row(
+        children: [
+          Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
+          const SizedBox(width: 11),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.5.1 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+          ),
+          modeSelector,
+        ],
+      ),
+    );
+  }
 }
+

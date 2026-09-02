@@ -1,31 +1,21 @@
-# RT Trainer v0.5 Demo
+# RT Trainer v0.5.1 – Mobile + spoken ATC
 
-Första paketerade demoversionen för extern testpilot. Versionen bygger vidare på v0.4.5 och behåller den deterministiska valideringen, svensk radiotelefoni, svenskt bokstaveringsalfabet, PTT och ASR-kvalitetskontroll.
+This version is based on v0.5 Web Demo and deliberately leaves the readback validator/radiotelephony rules unchanged.
 
-## Nytt i v0.5 Demo
+## Changes in v0.5.1
 
-- Ny startsida som tydligt markerar att detta är en testversion.
-- Kort instruktion till testpiloten om PTT, svensk radiotelefoni och vad som är värdefullt att prova.
-- Versionen är märkt **Demo v0.5** i appen.
-- Slutvyn ber testpiloten särskilt notera ASR-misstolkningar, rimligheten i återkopplingen och onaturliga radiorepliker.
-- Alla funktioner från v0.4.5 finns kvar, inklusive skillnaden mellan sakfel och fraseologivarning för banbeteckning.
+- Responsive mobile layout: phones and low-height landscape screens no longer use the desktop layout.
+- Compact header/progress/navigation on phones.
+- In very low landscape view, text-entry controls are hidden so PTT remains the primary interaction.
+- ATC exercise prompts are spoken through the backend using OpenAI TTS.
+- ATC prompt text is hidden by default. `VISA TEXT` exposes it as learner support.
+- `LYSSNA IGEN` repeats the current ATC transmission.
+- Spoken prompt strings explicitly use Swedish digit-by-digit runway/frequency pronunciation and Swedish spelling words, rather than letting TTS infer how numeric text should be read.
+- `deploy_web.ps1` now creates `docs/.nojekyll` automatically.
 
-## Viktig arkitektur för demo
+## Local test
 
-Webbappen innehåller ingen OpenAI API-nyckel. Rösttranskribering går via backend. För lokal körning ligger nyckeln i `server/.env`, som är exkluderad från Git.
-
-För en extern demo måste därför både Flutter-webbappen och backend publiceras. GitHub Pages räcker inte ensamt för röstfunktionen eftersom API-nyckeln aldrig får ligga i klienten.
-
-## Lokal kontroll före publicering
-
-I projektroten:
-
-```powershell
-flutter pub get
-flutter test
-```
-
-Starta backend i separat terminal:
+Backend:
 
 ```powershell
 cd server
@@ -33,20 +23,49 @@ npm install
 npm start
 ```
 
-Starta webbappen från projektroten:
+Flutter, from project root:
 
 ```powershell
+flutter pub get
+flutter test
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=http://localhost:8080
 ```
 
-## Föreslagen testordning
+## Render
 
-1. Kör en korrekt återläsning med PTT.
-2. Prova fel QNH eller transponderkod.
-3. Prova rätt bana med icke-standardiserat tal, t.ex. `bana nitton`, och kontrollera att det blir fraseologivarning snarare än sakfel.
-4. Prova svensk bokstavering av flera olika registreringar.
-5. Kör scenariosekvensen och kontrollera att anropssignalens status följer med mellan stegen.
+The new `/api/speech` endpoint defaults to:
 
-## Webbdemo
+- `OPENAI_TTS_MODEL=gpt-4o-mini-tts`
+- `OPENAI_TTS_VOICE=alloy`
 
-Se `WEB_DEPLOY.md`. Paketet innehåller `render.yaml` för backend och `deploy_web.ps1` för att bygga `docs/` till GitHub Pages. Backend stöder både GitHub Pages-origin och lokal testning via localhost:5000.
+These variables are optional because the server has defaults. The existing `OPENAI_API_KEY` remains server-side only.
+
+After the code is pushed to the existing GitHub repository, Render can redeploy the backend automatically.
+
+## GitHub Pages build
+
+```powershell
+.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
+
+git add .
+git commit -m "Publish RT Trainer v0.5.1 mobile + TTS"
+git push
+```
+
+Expected public URL:
+
+`https://perfect-speed.github.io/rt-trainer/`
+
+## Test focus
+
+1. Portrait phone: no horizontal overflow/scaled desktop layout.
+2. Landscape phone: compact header and PTT remain visible/useful.
+3. Start an exercise: ATC should be heard; if browser autoplay blocks it, use `LYSSNA IGEN`.
+4. Prompt text should initially be hidden and visible only after `VISA TEXT`.
+5. Verify spoken runway 19 is “ett nia”, runway 01 is “nolla ett”, and callsigns use the Swedish spelling alphabet. The demo TTS deliberately uses the clarified Swedish radiotelephony digit forms: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia.
+6. PTT → transcription → deterministic validation should behave exactly as in v0.5.
+
+
+## Swedish digit pronunciation
+
+The demo voice uses the clarified Swedish radiotelephony digit forms: **nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia**. The speech normalizer accepts both clarified forms and ordinary Swedish forms (for example `noll`/`nolla`, `två`/`tvåa`, `fem`/`femma`, `nio`/`nia`) as the same numeric value. We deliberately do not score ordinary pronunciation as a learner error yet, because ASR may not preserve the final vowel reliably enough for a fair automatic phraseology grade.

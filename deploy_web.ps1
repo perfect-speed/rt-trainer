@@ -17,8 +17,9 @@ if (Test-Path docs) {
 }
 New-Item -ItemType Directory -Path docs | Out-Null
 Copy-Item build\web\* docs -Recurse -Force
+New-Item -ItemType File -Path docs\.nojekyll -Force | Out-Null
 
 Write-Host ""
 Write-Host "Web build copied to docs/."
-Write-Host "Next: git add . ; git commit -m 'Publish RT Trainer v0.5 demo' ; git push"
+Write-Host "Next: git add . ; git commit -m 'Publish RT Trainer v0.5.1 mobile + TTS' ; git push"
 Write-Host "Expected GitHub Pages URL: https://perfect-speed.github.io/$RepoName/"
