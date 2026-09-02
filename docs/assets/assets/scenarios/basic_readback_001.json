@@ -1,0 +1,16 @@
+{
+  "scenario_id": "BASIC_READBACK_001",
+  "version": "0.1.0",
+  "title": "Grundläggande säkerhetskritisk readback",
+  "aircraft": { "callsign": "SE-KQX" },
+  "environment": { "type": "TRAINING", "service": "ATC" },
+  "expected": {
+    "runway": "01",
+    "qnh": "1016",
+    "squawk": "4255"
+  },
+  "training": {
+    "mode": "TRAIN",
+    "primary_objective": "MANDATORY_READBACK_OBJECTS"
+  }
+}
