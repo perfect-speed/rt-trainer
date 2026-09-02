@@ -19,5 +19,9 @@ services:
         value: cedar
       - key: OPENAI_TTS_SPEED
         value: '1.06'
+      - key: OPENAI_REALTIME_MODEL
+        value: gpt-realtime-1.5
+      - key: OPENAI_REALTIME_VOICE
+        value: marin
       - key: ALLOWED_ORIGIN
         value: https://perfect-speed.github.io,http://localhost:5000

@@ -42,6 +42,7 @@ class TrainerApi {
 
   Future<Uint8List> synthesizeSpeech({
     required String text,
+    String engine = 'realtime',
   }) async {
     if (!isConfigured) {
       throw StateError('RT_API_URL är inte konfigurerad.');
@@ -50,7 +51,7 @@ class TrainerApi {
     final response = await http.post(
       uri,
       headers: {'content-type': 'application/json'},
-      body: jsonEncode({'text': text}),
+      body: jsonEncode({'text': text, 'engine': engine}),
     );
     if (response.statusCode != 200) {
       throw StateError('Taluppläsning misslyckades (${response.statusCode}).');

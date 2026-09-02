@@ -1,34 +1,30 @@
-# RT Trainer v0.5.5 – Prosodic grouping
+# RT Trainer v0.6.0 – Realtime voice prototype
 
-This iteration deliberately adds no new training functionality. It focuses on the perceived rhythm of Swedish radiotelephony.
+This iteration changes the ATC speech architecture. It keeps all existing readback validation and Swedish ASR behaviour, but adds a Realtime audio path intended to recover the natural radio feel observed in the earlier Kalmar–Jönköping conversational prototype.
 
-## Changes in v0.5.5
+The default voice path uses OpenAI Realtime audio through the Node backend. The normative ATC text is passed directly to the Realtime model; the model may realize pronunciation and prosody but must not change any operational value. The previous v0.5.5 TTS path is retained as an A/B baseline and can be toggled in the radio panel.
 
-- Introduces **prosodic grouping** as an explicit speech-design principle.
-- QNH is rendered internally for TTS as `ku en Helge` so that it is heard as the compact Swedish RT expression **Q N Helge**, rather than three equally separated items.
-- TTS instructions now distinguish strongly between:
-  - **very short spacing within an information group**, and
-  - **a short natural pause between information groups**.
-- Callsigns are explicitly treated as one rhythmic identity group; the model is instructed not to insert isolated pauses between Swedish spelling words.
-- QNH + pressure digits are one group; transponder is a separate group.
-- No changes to the deterministic validation rules in this iteration.
+New backend environment variables:
 
-The design rule remains:
+```text
+OPENAI_REALTIME_MODEL=gpt-realtime-1.5
+OPENAI_REALTIME_VOICE=marin
+```
 
-> Stringens i reglerna – realism i uttrycket – progression i komplexiteten.
+Existing `OPENAI_API_KEY` is reused. No API key is exposed to Flutter or GitHub Pages.
 
-## Verification
-
-After copying the files into the project directory:
+## First test after copying files
 
 ```powershell
 flutter test
 ```
 
-No new Flutter dependency has been added, so `flutter pub get` is not required solely for this version.
+There are no new Flutter packages. The backend has one new Node dependency (`ws`), which Render installs automatically via `npm install` after push.
 
-Suggested commit message:
+For local Flutter testing against Render:
 
 ```powershell
-git commit -m "Add prosodic grouping to Swedish RT speech"
+flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
+
+Start with **RÖST · REALTIME**. Listen especially to SE-GLA, QNH 1018 and SE-RYD. Then toggle to **RÖST · TTS BAS** for an immediate baseline comparison.

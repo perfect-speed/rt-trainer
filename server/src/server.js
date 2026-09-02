@@ -4,6 +4,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import OpenAI from 'openai';
+import WebSocket from 'ws';
 import { toFile } from 'openai/uploads';
 
 const app = express();
@@ -26,8 +27,141 @@ app.use(cors({
 app.use(express.json({ limit: '64kb' }));
 app.use(rateLimit({ windowMs: 60_000, limit: 40, standardHeaders: true, legacyHeaders: false }));
 
+
+function pcm16ToWav(pcm, sampleRate = 24000, channels = 1) {
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * channels * bitsPerSample / 8;
+  const blockAlign = channels * bitsPerSample / 8;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+function generateRealtimeSpeech(text) {
+  return new Promise((resolve, reject) => {
+    const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-1.5';
+    const voice = process.env.OPENAI_REALTIME_VOICE || 'marin';
+    const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+    const chunks = [];
+    let requestSent = false;
+    let settled = false;
+
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch (_) {}
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+
+    const finish = () => {
+      if (settled) return;
+      if (!chunks.length) return fail(new Error('Realtime returned no audio.'));
+      settled = true;
+      try { ws.close(); } catch (_) {}
+      resolve(pcm16ToWav(Buffer.concat(chunks), 24000, 1));
+    };
+
+    const ws = new WebSocket(url, {
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    });
+
+    const timeout = setTimeout(() => fail(new Error('Realtime speech timed out.')), 20000);
+
+    ws.on('error', fail);
+    ws.on('close', () => {
+      clearTimeout(timeout);
+      if (!settled && !chunks.length) fail(new Error('Realtime connection closed before audio completed.'));
+    });
+
+    ws.on('message', (message) => {
+      let event;
+      try { event = JSON.parse(message.toString()); } catch (_) { return; }
+
+      if (event.type === 'session.created') {
+        ws.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            type: 'realtime',
+            model,
+            output_modalities: ['audio'],
+            audio: {
+              output: {
+                format: { type: 'audio/pcm', rate: 24000 },
+                voice,
+              },
+            },
+            instructions: [
+              'Du är en erfaren svensk flygledare och talar naturlig svensk VHF-radiotelefoni.',
+              'Det ska låta som verklig ATC, inte som uppläst text eller talsyntes.',
+              'Var professionell, kort och naturligt rytmisk. Gruppera information som en flygledare gör.',
+              'Anropssignal är en sammanhållen identitetsgrupp. QNH med värde är en sammanhållen grupp. Transponder och frekvens är egna grupper.',
+              'Använd svenska bokstaveringsalfabetet för registreringar: S Sigurd, E Erik, A Adam, B Bertil, C Cesar, D David, F Filip, G Gustav, H Helge, I Ivar, J Johan, K Kalle, L Ludvig, M Martin, N Niklas, O Olof, P Petter, Q Qvintus, R Rudolf, T Tore, U Urban, V Viktor, W Wilhelm, X Xerxes, Y Yngve, Z Zäta.',
+              'QNH uttalas i svensk flygradio som Q N Helge, med svensk bokstavsrytm, följt direkt av värdet.',
+              'Siffror i bana, QNH, transponder och frekvens uttalas siffra för siffra. Använd i denna grundträning tydliga svenska former: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia.',
+              'Frekvensens decimalpunkt uttalas komma.',
+              'Ändra aldrig ett operativt värde och lägg aldrig till information som inte finns i meddelandet.',
+            ].join(' '),
+          },
+        }));
+        return;
+      }
+
+      if (event.type === 'session.updated' && !requestSent) {
+        requestSent = true;
+        ws.send(JSON.stringify({
+          type: 'response.create',
+          response: {
+            conversation: 'none',
+            input: [],
+            output_modalities: ['audio'],
+            instructions: [
+              'Sänd exakt följande operativa ATC-meddelande på svenska.',
+              'Behåll exakt anropssignal, bana, QNH, transponder, frekvens och övrig innebörd.',
+              'Omsätt notation till naturligt svenskt radiotal enligt sessionens regler; lägg inte till någon inledning eller avslutning.',
+              `MEDDELANDE: ${text}`,
+            ].join('\n'),
+            metadata: { purpose: 'rt-trainer-v0.6' },
+          },
+        }));
+        return;
+      }
+
+      if (event.type === 'response.output_audio.delta' && typeof event.delta === 'string') {
+        chunks.push(Buffer.from(event.delta, 'base64'));
+        return;
+      }
+
+      if (event.type === 'response.done') {
+        clearTimeout(timeout);
+        if (event.response?.status === 'failed') {
+          return fail(new Error(event.response?.status_details?.error?.message || 'Realtime response failed.'));
+        }
+        return finish();
+      }
+
+      if (event.type === 'error') {
+        clearTimeout(timeout);
+        return fail(new Error(event.error?.message || 'Realtime API error.'));
+      }
+    });
+  });
+}
+
+
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.0', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -76,23 +210,34 @@ app.post('/api/speech', async (req, res) => {
   }
 
   const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
+  const engine = req.body?.engine === 'tts' ? 'tts' : 'realtime';
   if (!text) {
     return res.status(400).json({ error: 'Speech text missing.' });
   }
 
   try {
+    if (engine === 'realtime') {
+      const wav = await generateRealtimeSpeech(text);
+      res.setHeader('Content-Type', 'audio/wav');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-RT-Speech-Engine', 'realtime');
+      return res.send(wav);
+    }
+
+    // v0.5.5 baseline kept deliberately for A/B comparison.
     const speech = await client.audio.speech.create({
       model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
       voice: process.env.OPENAI_TTS_VOICE || 'cedar',
       input: text,
       speed: Number(process.env.OPENAI_TTS_SPEED || '1.06'),
-      instructions: 'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik. Det ska låta som en kort radiosändning mellan pilot och ATS, inte som berättarröst, kundtjänst, navigation eller läroboksuppläsning. Använd avslappnad men professionell ATC-prosodi och tydlig prosodisk gruppering. Varje operativ informationsenhet ska kännas som ett sammanhållet block: anropssignal, bana, QNH, transponder och frekvens. Pausen INOM ett block ska vara mycket kortare än pausen MELLAN block. Bokstaverad anropssignal ska sägas som en enda rytmisk identitetsgrupp utan onaturliga pauser mellan bokstaveringsorden. Uttrycket ku en Helge ska låta som det svenska flygradiouttrycket Q N Helge och sägas kompakt; gör ingen tydlig paus mellan Helge och den efterföljande QNH-sifferserien. Gör däremot en kort naturlig grupppaus innan nästa informationsenhet, till exempel transponder. Sifferföljder inom QNH, transponder, bana och frekvens ska vara sammanhållna och rytmiska, inte en mekanisk uppräkning med lika stora mellanrum. Relativt kompakt tempo, små naturliga variationer i betoning och ingen överdriven artikulation. Börja direkt med meddelandet och avsluta direkt efter sista uppgiften. Behåll exakt informationen i manuset och lägg inte till, utelämna eller korrigera något. Sifferorden ska uttalas exakt som skrivna: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia.',
+      instructions: 'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik. Det ska låta som en kort radiosändning mellan pilot och ATS, inte som berättarröst, kundtjänst, navigation eller läroboksuppläsning. Använd avslappnad men professionell ATC-prosodi och tydlig prosodisk gruppering. Behåll exakt informationen i manuset och lägg inte till, utelämna eller korrigera något.',
       response_format: 'mp3',
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('X-RT-Speech-Engine', 'tts');
     return res.send(buffer);
   } catch (error) {
     console.error(error);

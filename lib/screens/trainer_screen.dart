@@ -14,6 +14,8 @@ import '../widgets/status_chip.dart';
 
 enum PracticeMode { drillReadback, scenario }
 
+enum SpeechEngine { realtime, ttsBaseline }
+
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
 
@@ -117,6 +119,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
+  SpeechEngine _speechEngine = SpeechEngine.realtime;
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
   TrainingStep get _step => _steps[_stepIndex];
@@ -183,15 +186,21 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // Normative scenario text remains the source of truth. A deterministic
-    // speech layer converts it to Swedish RT pronunciation for TTS.
-    final spoken = _speechFormatter.format(_step.atcTransmission);
+    // v0.6 changes the speech architecture. Realtime receives the normative
+    // ATC text directly and is responsible for natural Swedish RT realization.
+    // The v0.5.5 TTS baseline still uses the deterministic pronunciation script.
+    final speechText = _speechEngine == SpeechEngine.realtime
+        ? _step.atcTransmission
+        : _speechFormatter.format(_step.atcTransmission);
     setState(() {
       _isSpeakingAtc = true;
       _speechError = null;
     });
     try {
-      final bytes = await _api.synthesizeSpeech(text: spoken);
+      final bytes = await _api.synthesizeSpeech(
+        text: speechText,
+        engine: _speechEngine == SpeechEngine.realtime ? 'realtime' : 'tts',
+      );
       await _audioPlayer.stop();
       await _audioPlayer.play(BytesSource(bytes));
     } catch (error) {
@@ -561,6 +570,19 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   icon: Icon(_showAtcPromptText ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
                   label: Text(_showAtcPromptText ? 'DÖLJ TEXT' : 'VISA TEXT'),
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                ),
+                ChoiceChip(
+                  label: Text(_speechEngine == SpeechEngine.realtime ? 'RÖST · REALTIME' : 'RÖST · TTS BAS'),
+                  selected: _speechEngine == SpeechEngine.realtime,
+                  onSelected: _isSpeakingAtc
+                      ? null
+                      : (_) => setState(() {
+                            _speechEngine = _speechEngine == SpeechEngine.realtime
+                                ? SpeechEngine.ttsBaseline
+                                : SpeechEngine.realtime;
+                            _speechError = null;
+                          }),
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
             ),

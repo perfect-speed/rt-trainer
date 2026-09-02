@@ -1,34 +1,59 @@
-# RT Trainer – design principles (v0.5.5)
+# RT Trainer v0.6 – Realtime voice architecture prototype
 
-## Core principle
+## Design principle
 
-> **Stringens i reglerna – realism i uttrycket – progression i komplexiteten.**
+**Stringens i reglerna – realism i uttrycket – progression i komplexiteten.**
 
-The scenario/world model owns operational truth. The generative speech layer owns expression, but may not alter operational values.
+v0.5.x established a deterministic world state, deterministic readback validation, Swedish ASR normalization and a conventional text-to-speech layer. Repeated tuning improved pronunciation but produced diminishing returns in prosody.
 
-## Prosodic grouping
+v0.6 deliberately changes the speech architecture rather than adding more TTS exceptions.
 
-Radiotelephony is not perceived as a flat sequence of equally separated words. Operational information is normally delivered in perceptual chunks. In the current prototype the important groups include:
+## Architecture
 
-- callsign
-- runway
-- QNH
-- transponder
-- frequency
+```text
+Scenario / world state
+        |
+        | normative ATC text
+        v
+Realtime speech realization
+        |
+        | generated audio only
+        v
+Learner hears ATC
 
-The speech layer should therefore use two different temporal relationships:
+Learner PTT -> ASR -> deterministic normalization -> deterministic validator
+```
 
-1. **Within-group spacing:** very short. The items belong together perceptually.
-2. **Between-group spacing:** short but clearly larger. The listener can separate one operational item from the next.
+The scenario remains the source of operational truth. The Realtime model is not allowed to choose runway, QNH, squawk, frequency or callsign. It receives an already-fixed ATC transmission and is asked only to realize it as natural Swedish radio speech.
 
-Examples:
+## Why Realtime
 
-- `Q N Helge + pressure digits` is one QNH group.
-- `transponder + four digits` is another group.
-- a full Swedish callsign is one rhythmic identity group, not five isolated spelling words.
+The previous chain was:
 
-This is not cosmetic. For novice training it affects working-memory load, segmentation of information and the perceived authenticity of the task. It is therefore part of the training design and a candidate variable for later empirical evaluation.
+`scenario -> phonetic rewrite -> generic TTS -> audio`
 
-## Early training
+This gave explicit pronunciation control, but callsigns and information groups often inherited uniform synthetic spacing. v0.6 instead sends the normative transmission directly to a Realtime audio model with domain instructions. The hypothesis is that a native audio model can preserve more natural rhythm and grouping than a TTS system reading a heavily phonetic script.
 
-Early drills remain comparatively stringent in required information and phraseology while the ATC presentation should still sound natural. Internal order among mandatory readback items is not treated as a hard semantic error merely because, for example, QNH and transponder are reversed. Callsign-final can remain a pedagogical convention in the introductory drill layer.
+## A/B baseline
+
+The v0.5.5 TTS path is intentionally retained. The UI has a compact switch between:
+
+- **RÖST · REALTIME** – v0.6 experimental speech path, default.
+- **RÖST · TTS BAS** – v0.5.5-style deterministic pronunciation + TTS baseline.
+
+This is not intended as a learner-facing feature long term. It creates a controlled comparison during development and later supports formal expert rating.
+
+## Research implication
+
+The key research question is not whether a generative model can invent plausible ATC. It is whether a generative audio realization layer can increase perceptual realism while a deterministic scenario layer retains normative and operational control.
+
+Candidate comparison dimensions:
+
+- naturalness / ATC feel
+- prosodic grouping
+- intelligibility for novice learners
+- exact preservation of operational values
+- latency
+- consistency across callsigns and numeric groups
+
+v0.5.5 is frozen as the conventional TTS baseline for this comparison.
