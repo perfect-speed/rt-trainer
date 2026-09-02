@@ -1,0 +1,10 @@
+{
+  "name": "RT Trainer",
+  "short_name": "RT Trainer",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#091017",
+  "theme_color": "#091017",
+  "description": "Constraint-based radiotelephony training for PPL students.",
+  "orientation": "any"
+}
