@@ -83,9 +83,10 @@ app.post('/api/speech', async (req, res) => {
   try {
     const speech = await client.audio.speech.create({
       model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
-      voice: process.env.OPENAI_TTS_VOICE || 'alloy',
+      voice: process.env.OPENAI_TTS_VOICE || 'cedar',
       input: text,
-      instructions: 'Tala som en lugn och trovärdig svensk flygledare i normal radiotrafik, inte som en uppläsare eller läroboksröst. Använd naturlig svensk prosodi, korta funktionella pauser och ett jämnt, professionellt radiotempo. Behåll exakt den information som står i manuset och lägg inte till, utelämna eller rätta något. Uttala svenska bokstaveringsord naturligt. När manuset innehåller Q N Helge ska det uttalas som svensk flygradiotelefoni: bokstavsnamnet Q, bokstavsnamnet N och därefter Helge. Säg inte Q N H och säg inte ku en ha. När sifferord anges ska de uttalas exakt som skrivna: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Siffergrupper ska vara tydliga men inte överartikulerade.',
+      speed: Number(process.env.OPENAI_TTS_SPEED || '1.06'),
+      instructions: 'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik. Det ska låta som en kort radiosändning mellan pilot och ATS, inte som berättarröst, kundtjänst, navigation eller läroboksuppläsning. Använd avslappnad men professionell ATC-prosodi: relativt kompakt tempo, små naturliga variationer i betoning, korta funktionella pauser vid informationsgrupper och ingen överdriven artikulation. Börja direkt med meddelandet och avsluta direkt efter sista uppgiften. Behåll exakt informationen i manuset och lägg inte till, utelämna eller korrigera något. Svenska bokstaveringsord ska låta som naturlig flygradio. När manuset innehåller Q N Helge ska det uttalas Q, N, Helge på svenskt flygradiovis; säg inte Q N H och inte ku en ha. Sifferorden ska uttalas exakt som skrivna: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Gruppera siffror rytmiskt som i radiotrafik, inte som en uppräkning.',
       response_format: 'mp3',
     });
 

@@ -1,4 +1,4 @@
-# RT Trainer – design principles (v0.5.3)
+# RT Trainer – design principles (v0.5.4)
 
 ## Governing principle
 
@@ -28,3 +28,11 @@ not with an artificial textbook voice.
 Later scenarios may add realistic variation, tempo, workload, traffic and
 compressed everyday radio language. Assessment can distinguish semantic errors,
 phraseology warnings and acceptable operational variation.
+
+
+## v0.5.4 speech principle
+
+Prosody is part of the training interface, not cosmetic polish. Early exercises
+remain normatively stringent, while ATC delivery should sound natural enough
+that the learner's cognitive effort is spent on radiotelephony rather than on
+decoding synthetic narration.

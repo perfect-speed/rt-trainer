@@ -831,7 +831,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.5.2' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.5.4' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -848,7 +848,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.5.2 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.5.4 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

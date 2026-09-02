@@ -1,4 +1,4 @@
-# RT Trainer v0.5.3 – web deployment
+# RT Trainer v0.5.4 – web deployment
 
 ## 1. Test source
 
@@ -10,7 +10,7 @@ flutter test
 
 ```powershell
 git add .
-git commit -m "Publish RT Trainer v0.5.3 natural Swedish ATC"
+git commit -m "Publish RT Trainer v0.5.4 ATC prosody"
 git push
 ```
 
@@ -35,7 +35,7 @@ Check especially:
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add docs
-git commit -m "Build RT Trainer v0.5.3 web"
+git commit -m "Build RT Trainer v0.5.4 web"
 git push
 ```
 

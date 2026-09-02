@@ -69,19 +69,51 @@ class SpokenRtNormalizer {
   }
 
   String _normalizeFrequency(String input) {
-    final pattern = RegExp(
-      r'\b((?:one|two|three|four|five|six|seven|eight|nine|zero|oh|noll|ett|en|två|tva|tre|fyra|fem|sex|sju|åtta|atta|nio)[\s-]+){2,3}(?:decimal|point|dot|komma|punkt)[\s-]+((?:one|two|three|four|five|six|seven|eight|nine|zero|oh|noll|ett|en|två|tva|tre|fyra|fem|sex|sju|åtta|atta|nio)(?:[\s-]+|\b)){2,3}',
+    // Spoken frequencies occur both with and without an explicit decimal
+    // marker.  Keep this parser deliberately value-driven: it converts the
+    // digits the learner actually said and never substitutes the expected
+    // frequency from scenario context.
+    //
+    // Examples accepted here:
+    //   "ett två fyra komma sju två fem"
+    //   "ett tvåa fyra punkt sju tvåa femma"
+    //   "124 komma 725"
+    const digitWords =
+        'three|seven|eight|zero|four|five|nine|one|two|six|oh|'
+        'nolla|tvåa|tvaa|trea|femma|sexa|nia|noll|ett|en|två|tva|'
+        'tre|fyra|fem|sex|sju|åtta|atta|nio';
+    final atom = '(?:[0-9]|$digitWords)';
+
+    // Fully spoken, digit-by-digit form with an explicit separator.
+    final spoken = RegExp(
+      r'\b(' + atom + r'(?:[\s-]+' + atom + r'){2})'
+      r'[\s,.-]*(?:decimal|point|dot|komma|punkt)[\s,.-]*'
+      r'(' + atom + r'(?:[\s-]+' + atom + r'){1,2})\b',
       caseSensitive: false,
     );
-    return input.replaceAllMapped(pattern, (m) {
-      final whole = m.group(0)!;
-      final parts = whole.split(RegExp(r'\b(?:decimal|point|dot|komma|punkt)\b', caseSensitive: false));
-      if (parts.length != 2) return whole;
-      final left = _wordsToDigits(parts[0]);
-      final right = _wordsToDigits(parts[1]);
-      if (left.length < 3 || right.length < 2) return whole;
+
+    var output = input.replaceAllMapped(spoken, (m) {
+      final left = _tokensToDigits(m.group(1)!);
+      final right = _tokensToDigits(m.group(2)!);
+      if (left.length != 3 || right.length < 2 || right.length > 3) {
+        return m.group(0)!;
+      }
+      final mhz = int.tryParse(left);
+      if (mhz == null || mhz < 118 || mhz > 136) return m.group(0)!;
       return '$left.$right';
     });
+
+    // ASR can collapse one side into digits while preserving the spoken word
+    // "komma", e.g. "124 komma 725".  Normalise that form as well.
+    output = output.replaceAllMapped(
+      RegExp(
+        r'\b(1[1-3][0-9])\s*(?:decimal|point|dot|komma|punkt)\s*([0-9]{2,3})\b',
+        caseSensitive: false,
+      ),
+      (m) => '${m.group(1)}.${m.group(2)}',
+    );
+
+    return output;
   }
 
   String _normalizeFrequencyWithoutSeparator(String input, String? expectedFrequency) {

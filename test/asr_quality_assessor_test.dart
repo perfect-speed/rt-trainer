@@ -116,4 +116,29 @@ void main() {
     expect(result.callsignUncertain, isFalse);
   });
 
+  test('normalises spoken frequency with explicit komma', () {
+    const mbn = ExpectedReadback(
+      callsign: 'SE-MBN',
+      frequency: '124.725',
+    );
+    final normalized = normalizer.normalize(
+      'Ett två fyra komma sju två fem Sigurd Erik Martin Bertil Niklas.',
+      mbn,
+    );
+    expect(normalized, contains('124.725'));
+    expect(normalized, contains('SE-MBN'));
+  });
+
+  test('normalises clarified digit forms around explicit komma', () {
+    const mbn = ExpectedReadback(
+      callsign: 'SE-MBN',
+      frequency: '124.725',
+    );
+    final normalized = normalizer.normalize(
+      'Ett tvåa fyra komma sju tvåa femma Sigurd Erik Martin Bertil Niklas.',
+      mbn,
+    );
+    expect(normalized, contains('124.725'));
+  });
+
 }
