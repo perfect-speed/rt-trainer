@@ -74,7 +74,7 @@ class SwedishRtSpeechFormatter {
 
     text = text.replaceAllMapped(
       RegExp(r'\bQNH\s+(\d{3,4})\b', caseSensitive: false),
-      (match) => 'ku enn Helge ${_spellDigits(match.group(1)!)}',
+      (match) => 'Q N Helge ${_spellDigits(match.group(1)!)}',
     );
 
     text = text.replaceAllMapped(
@@ -92,9 +92,9 @@ class SwedishRtSpeechFormatter {
     // The lower-case pronunciation cue is deliberate: generic TTS otherwise
     // tends to separate Q and N too much. In Swedish RT this is intended to
     // sound as the compact Swedish RT expression 'Q N Helge'. The written
-    // cue 'ku enn Helge' is intentionally pronunciation-oriented; the
+    // cue 'Q N Helge' is intentionally pronunciation-oriented; the
     // normative scenario text remains QNH.
-    text = text.replaceAll(RegExp(r'\bQNH\b', caseSensitive: false), 'ku enn Helge');
+    text = text.replaceAll(RegExp(r'\bQNH\b', caseSensitive: false), 'Q N Helge');
 
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }

@@ -1,23 +1,23 @@
-# RT Trainer v0.6.4 – Segmented controlled speech
+# RT Trainer v0.6.5 – Verified segmented speech
 
-## Design principle
+## Design goal
 
-**Stringens i reglerna – realism i uttrycket – progression i komplexiteten.**
+Keep the naturalness obtained with Realtime speech while enforcing stable,
+repeatable Swedish radiotelephony content.
 
-The scenario/world state owns operational truth. Generative audio is allowed to
-realize speech, but not to choose or alter runway, QNH, transponder, frequency,
-callsign or clearance content.
+The governing rule remains:
 
-## Why v0.6.4
+> Scenario/world state owns reality. Generative AI owns expression.
 
-v0.5.x gave high content control but limited naturalness. v0.6.0 showed that a
-Realtime audio model could sound substantially more natural, but it could also
-add information. v0.6.1–0.6.2 introduced an output-content guard; testing then
-showed the opposite failure mode: the model could omit a mandatory final group
-such as `transponder 4255`, and the guard correctly rejected the audio.
+v0.6.5 adds a second observation point after the generative speech model.
 
-The next hypothesis is therefore structural rather than prompt tuning:
-**reduce the generative task size.**
+## Why this version exists
+
+v0.6.4 showed that identical input could produce different audible output:
+Q N Helge could vary, short final digits could disappear, and a segment could
+sound truncated even when Realtime's own transcript looked complete.
+Therefore the model's self-transcript is not sufficient evidence that the
+actual audio contains the required phraseology.
 
 ## Architecture
 
@@ -25,69 +25,60 @@ The next hypothesis is therefore structural rather than prompt tuning:
 Scenario / world state
         |
         v
-Deterministic normative ATC text
+Deterministic RT formatter
         |
         v
-Deterministic Swedish spoken script
+Information groups
         |
         v
-Deterministic segmentation
-  [callsign] [runway] [QNH] [transponder] ...
+Realtime audio generation
+        |
+        +--> Realtime self-transcript guard
         |
         v
-Realtime realization + content guard PER SEGMENT
+Generated PCM audio
         |
         v
-Accepted PCM segments
+Independent ASR verification
         |
         v
-trim / short controlled join / concatenate
+Deterministic token comparison
         |
         v
-one WAV to learner
+Accepted segment / retry
+        |
+        v
+Concatenated ATC WAV
 ```
 
-The model receives the full transmission only as prosodic context. It is told
-to speak one exact current segment and never continue into the next segment.
-Each generated segment must pass the same canonical content comparison used by
-the speech guard. A failed segment is retried once; if it still fails, the
-whole speech request fails rather than presenting incorrect operational audio.
+The independent verifier is deliberately downstream of audio generation. It
+therefore measures what is present in the actual PCM rather than trusting the
+generator's textual side channel.
 
-## Segmentation
+## Stabilisation rules
 
-Current micro-exercises already use comma-delimited information groups. v0.6.4
-preserves that deterministic grouping. A decimal comma without following
-whitespace is not treated as a group separator.
+1. Operational values are deterministic and never inferred by the speech model.
+2. Each comma-delimited information group is generated separately.
+3. Realtime's own transcript must match the deterministic speech script.
+4. The generated audio is independently transcribed and must match the same script.
+5. Rejected segments are regenerated, up to three attempts by default.
+6. Segment tails are never trimmed; only leading silence may be reduced.
+7. QNH is represented in the speech layer as `Q N Helge`, while the normative object remains `QNH`.
+8. ASR normalisation may repair labels such as `Tune Helge` -> QNH, but may never repair a numerical value toward the expected answer.
 
-Generated PCM has leading/trailing near-silence trimmed conservatively and a
-small configurable join gap is inserted between accepted groups. Default:
+## Diagnostic measurements
 
-```text
-OPENAI_REALTIME_SEGMENT_GAP_MS=65
-```
+Every accepted/rejected segment logs expected script, Realtime transcript,
+independent audio transcript, attempt, raw audio duration, post-leading-trim
+duration and verification result. This gives us measurement points between
+system blocks rather than only observing the final audible output.
 
-This is an experimental parameter, not a normative RT value.
+## Experimental question
 
-## What v0.6.4 is intended to test
+Can a generative audio model be used for natural prosody in a norm-governed
+training system if deterministic content is checked independently after audio
+generation?
 
-The primary observations are:
-
-- Does every mandatory information group survive generation unchanged?
-- Does natural ATC-like prosody remain inside each short group?
-- Do independently generated groups create audible seams, tempo changes or
-  unnatural pauses when concatenated?
-- What latency penalty results from sequential generation?
-
-This version deliberately adds no new training content. v0.5.5 remains the
-conventional TTS baseline, while v0.6.0 remains an important reference for
-high naturalness with insufficient content control.
-
-## v0.6.4: stabilisering av segmenterat tal
-
-Tre lager hålls isär:
-
-1. **Normativt objekt:** exempelvis `QNH = 1018`.
-2. **Talrealisation:** QNH får det uttalsorienterade manuset `ku enn Helge`; värdet genereras deterministiskt siffra för siffra.
-3. **ASR-normalisering:** vanliga feltolkningar av själva etiketten, exempelvis `Tune Helge`, får reduceras till `qnh`, men talvärdet får aldrig ersättas med facit.
-
-Ljudsegmenteringens sluttrimning är borttagen. Det är en medveten robusthetsprioritering: innehållsintegritet väger tyngre än minimalt mellanrum mellan segment.
+Trade-off: v0.6.5 is expected to have more latency and API usage than v0.6.4.
+That is acceptable at this prototype stage because phraseology stability is
+the variable being tested.

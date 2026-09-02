@@ -1,54 +1,41 @@
-# RT Trainer v0.6.4 – Segmented controlled speech
+# RT Trainer v0.6.5 – Verified segmented speech
 
-v0.6.4 is an architecture experiment. It keeps the deterministic scenario,
-validator and Swedish ASR from v0.6.2, but changes how the Realtime voice is
-generated.
+v0.6.5 keeps the natural Realtime voice from the v0.6 branch, but adds an
+independent verification pass over the audio that was actually generated.
+The purpose is to improve repeatability without moving operational truth into
+the generative model.
 
-Instead of asking the model to reproduce a complete ATC transmission in one
-generation, the backend splits the already-fixed spoken script into
-information groups, for example:
+Speech path:
 
 ```text
-Sigurd Erik Kalle Qvintus Xerxes
-bana nolla ett
-ku enn Helge ett nolla ett sexa
-transponder fyra tvåa femma femma
+normative scenario
+  -> deterministic Swedish RT speech script
+  -> segmented Realtime speech generation
+  -> Realtime transcript guard
+  -> independent ASR of the generated PCM audio
+  -> deterministic content comparison
+  -> concatenate accepted segments
+  -> WAV to Flutter
 ```
 
-Each group is generated and content-checked separately. Only accepted groups
-are concatenated into the WAV returned to Flutter. The hypothesis is that a
-small generative task can preserve natural local prosody without letting the
-model omit or add operational information.
+The important change is the second guard. A Realtime response can report a
+complete transcript even when the audio sounds truncated or different. v0.6.5
+therefore transcribes the generated audio itself and only accepts a segment
+when that independent transcript contains the same deterministic RT content.
+A failed segment is regenerated, up to three attempts by default.
 
-The v0.5.5-style TTS path remains available as **RÖST · TTS BAS** for A/B
-comparison.
+For diagnostics, Render logs now include for every segment:
+- exact expected speech script
+- Realtime's own transcript
+- independent verification transcript
+- raw and trimmed audio duration
+- attempt number and accepted/rejected state
 
-## First test after copying files
+QNH remains normative as `QNH 1016`, while the isolated speech script now uses
+`Q N Helge ett nolla ett sexa`. The voice instruction explicitly requests
+Swedish Q and N pronunciation. The verifier accepts common ASR spelling such
+as `Tune Helge` as a transcription artifact, but does not change the QNH value.
 
-```powershell
-flutter test
-```
-
-There are no new Flutter packages. Render installs the existing Node backend
-dependencies automatically after push.
-
-For local Flutter testing against Render:
-
-```powershell
-flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
-```
-
-v0.6.4 may have noticeably longer first-audio latency because the groups are
-deliberately generated sequentially. For this iteration, evaluate three things
-separately: exact phraseology/content, naturalness inside each group, and the
-quality of the joins between groups.
-
-## v0.6.4 stabilisering
-
-Den här versionen behåller den segmenterade Realtime-arkitekturen men stabiliserar tre observerade fel från v0.6.3:
-
-- ASR-varianter som `Tune Helge 1018` normaliseras till QNH-etiketten utan att tryckvärdet ändras.
-- Segmentmotorn trimmar endast inledande tystnad; hela slutet på varje ljudsegment bevaras så korta sista ord som `ett` inte kapas.
-- QNH har ett explicit uttalsmanus (`ku enn Helge`) i speech-lagret, medan scenario/world state fortsatt använder det normativa objektet `QNH`.
-
-Målet är stabilisering, inte ny funktionalitet.
+This version intentionally adds some latency and API cost. It is an experiment
+in whether independent audio verification can preserve Realtime naturalness
+while making phraseology substantially more reproducible.

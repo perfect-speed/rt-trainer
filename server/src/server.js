@@ -76,6 +76,8 @@ function canonicalSpeechTokens(value) {
     .replace(/q\s*n\s*h\b/g, 'qnh')
     .replace(/q\s*n\s*helge\b/g, 'qnh')
     .replace(/\bku\s+en+n?\s+helge\b/g, 'qnh')
+    .replace(/\btune\s+helge\b/g, 'qnh')
+    .replace(/\btun\s+helge\b/g, 'qnh')
     // Realtime may transcribe a correctly spoken Swedish spelling sequence
     // back into compact registration notation. Canonicalize that notation
     // to the same form as explicit spelling words before content comparison.
@@ -176,7 +178,7 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 
   // Deliberately preserve the complete tail. Short final words such as
   // "ett" can have low-energy endings and must never be clipped by the
-  // segment joiner. v0.6.4 trades a little extra inter-segment silence for
+  // segment joiner. v0.6.5 preserves the complete tail and adds independent audio verification for
   // content integrity.
   return pcm.subarray(first * 2);
 }
@@ -184,6 +186,33 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 function pcmSilence(durationMs, sampleRate = 24000) {
   const samples = Math.max(0, Math.round(sampleRate * durationMs / 1000));
   return Buffer.alloc(samples * 2);
+}
+
+function pcmDurationMs(pcm, sampleRate = 24000) {
+  if (!Buffer.isBuffer(pcm)) return 0;
+  return Math.round((pcm.length / 2) / sampleRate * 1000);
+}
+
+async function transcribeGeneratedSegmentAudio(pcm, segment, attempt) {
+  if (!client) throw new Error('OpenAI API is not configured.');
+  const wav = pcm16ToWav(pcm, 24000, 1);
+  const audio = await toFile(wav, `rt-segment-${segment.index + 1}-attempt-${attempt}.wav`, { type: 'audio/wav' });
+  const prompt = [
+    'Detta är en kort svensk flygradiofras. Transkribera exakt vad som faktiskt hörs.',
+    'Rätta inte mot ett förväntat facit och lägg inte till saknade ord.',
+    'Skriv svenska bokstaveringsord som de hörs.',
+    'Om bokstäverna Q och N uttalas före Helge, skriv "Q N Helge". Om andra bokstäver hörs, skriv dem som de hörs.',
+    'Sifferord ska återges som tal eller ord utan att rättas.',
+    `Förväntad frastyp för vokabulärstöd, inte facit: ${segment.normative}`,
+  ].join('\n');
+  const transcription = await client.audio.transcriptions.create({
+    file: audio,
+    model: process.env.OPENAI_SPEECH_VERIFY_MODEL || process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',
+    language: 'sv',
+    prompt,
+    temperature: 0,
+  });
+  return String(transcription.text || '').trim();
 }
 
 function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment, totalSegments, attempt = 1 }) {
@@ -207,22 +236,26 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
       if (settled) return;
       if (!chunks.length) return fail(new Error('Realtime returned no audio.'));
       if (!transcriptMatchesScript(transcript, segment.spoken)) {
-        console.warn('Realtime segment guard rejected output', {
+        console.warn('Realtime segment transcript guard rejected output', {
           segment: segment.index + 1,
           totalSegments,
           attempt,
           expected: segment.spoken,
-          transcript,
+          realtimeTranscript: transcript,
           normativeSegment: segment.normative,
           fullNormativeText,
         });
         return fail(new Error('Realtime segment content guard rejected generated wording.'));
       }
+      const rawPcm = Buffer.concat(chunks);
+      const trimmedPcm = trimPcm16LeadingSilence(rawPcm);
       settled = true;
       try { ws.close(); } catch (_) {}
       resolve({
-        pcm: trimPcm16LeadingSilence(Buffer.concat(chunks)),
+        pcm: trimmedPcm,
         transcript,
+        rawDurationMs: pcmDurationMs(rawPcm),
+        durationMs: pcmDurationMs(trimmedPcm),
       });
     };
 
@@ -262,7 +295,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               'Det operativa innehållet är låst av träningssystemet.',
               'Tala naturlig svensk VHF-radiotelefoni: professionellt, kort, rytmiskt och sammanhållet.',
               'Gruppen ska låta som en del av ett sammanhängande ATC-meddelande, inte som en fristående uppläsning.',
-              'Bokstaveringsord uttalas sammanhängande som svensk flygradio. Textformen ku enn Helge är ett uttalsmanus och ska låta exakt som svensk flygradio Q N Helge, inte som engelska ord.',
+              'Bokstaveringsord uttalas sammanhängande som svensk flygradio. När texten innehåller Q N Helge ska Q uttalas som svensk bokstav Q (ku), N som svensk bokstav N (enn), följt av Helge. Säg aldrig K N Helge.',
               'Sifferorden och övriga ord ska uttalas exakt som de står.',
             ].join(' '),
           },
@@ -290,7 +323,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.4-stabilized-segmented-speech',
+              purpose: 'rt-trainer-v0.6.5-verified-segmented-speech',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -333,12 +366,43 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
 
 async function generateGuardedRealtimeSegment(args) {
   let lastError;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  const maxAttempts = Number(process.env.OPENAI_REALTIME_SEGMENT_ATTEMPTS || '3');
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await generateRealtimeSegment({ ...args, attempt });
+      const generated = await generateRealtimeSegment({ ...args, attempt });
+      const verificationTranscript = await transcribeGeneratedSegmentAudio(generated.pcm, args.segment, attempt);
+      const verified = transcriptMatchesScript(verificationTranscript, args.segment.spoken);
+
+      console.info('Realtime segment diagnostic', {
+        segment: args.segment.index + 1,
+        totalSegments: args.totalSegments,
+        attempt,
+        expected: args.segment.spoken,
+        normative: args.segment.normative,
+        realtimeTranscript: generated.transcript,
+        verificationTranscript,
+        rawDurationMs: generated.rawDurationMs,
+        durationMs: generated.durationMs,
+        verified,
+      });
+
+      if (!verified) {
+        lastError = new Error('Independent audio guard rejected generated wording.');
+        console.warn('Independent audio guard rejected Realtime segment', {
+          segment: args.segment.index + 1,
+          attempt,
+          expected: args.segment.spoken,
+          verificationTranscript,
+          realtimeTranscript: generated.transcript,
+        });
+        continue;
+      }
+
+      return { ...generated, verificationTranscript };
     } catch (error) {
       lastError = error;
-      if (!String(error?.message || error).includes('content guard')) throw error;
+      const message = String(error?.message || error);
+      if (!message.includes('content guard') && !message.includes('audio guard')) throw error;
     }
   }
   throw lastError || new Error('Realtime speech segment generation failed.');
@@ -355,7 +419,9 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
   const pcmParts = [];
   const transcripts = [];
-  const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '65');
+  const verificationTranscripts = [];
+  const durationsMs = [];
+  const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '90');
 
   // Generate sequentially on purpose. Besides keeping API pressure low, this
   // makes logs easy to interpret during the segmented-speech architecture experiment.
@@ -368,6 +434,8 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
     });
     pcmParts.push(result.pcm);
     transcripts.push(result.transcript);
+    verificationTranscripts.push(result.verificationTranscript);
+    durationsMs.push(result.durationMs);
     if (segment.index < segments.length - 1 && joinSilenceMs > 0) {
       pcmParts.push(pcmSilence(joinSilenceMs));
     }
@@ -375,6 +443,8 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
   console.info('Realtime segmented speech accepted', {
     transcripts,
+    verificationTranscripts,
+    durationsMs,
     joinSilenceMs,
   });
 
@@ -383,7 +453,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.4', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.5', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
