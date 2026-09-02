@@ -1,6 +1,6 @@
-# RT Trainer v0.6.8 – Prosodic stability
+# RT Trainer v0.6.9 – Prosodic stability
 
-v0.6.8 keeps the v0.6.7 resilient hybrid speech architecture and stabilises
+v0.6.9 keeps the v0.6.7 resilient hybrid speech architecture and stabilises
 segment endings and within-group rhythm. The goal is to retain the natural
 Realtime voice while reducing the intermittent half-spoken final digit/word
 heard in QNH and transponder groups, and reducing slow/over-emphasised spelling
@@ -20,7 +20,7 @@ normative scenario
   -> deterministic TTS fallback if Realtime cannot be accepted
 ```
 
-### v0.6.8 changes
+### v0.6.9 changes
 
 - Segment-specific prosody instructions:
   - callsigns: even compact rhythm; no spelling word may be stretched;

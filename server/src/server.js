@@ -16,6 +16,25 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
 });
 
+// Small in-memory cache for already accepted ATC waveforms. A replay or page
+// refresh should not regenerate a different controller voice/wording while the
+// Render instance is alive. Only successfully verified/fallback audio is cached.
+const speechCache = new Map();
+const SPEECH_CACHE_MAX = Number(process.env.RT_SPEECH_CACHE_MAX || '50');
+
+function speechCacheKey(engine, text, spokenText) {
+  return `${engine}\u241f${text}\u241f${spokenText || ''}`;
+}
+
+function rememberSpeech(key, value) {
+  if (speechCache.has(key)) speechCache.delete(key);
+  speechCache.set(key, value);
+  while (speechCache.size > SPEECH_CACHE_MAX) {
+    const oldest = speechCache.keys().next().value;
+    speechCache.delete(oldest);
+  }
+}
+
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
@@ -230,7 +249,7 @@ function segmentProsodyInstruction(segment) {
     case 'qnh':
       return [
         'Q N Helge och tryckvärdet ska sägas som en kompakt radiogrupp, inte långsam diktamen.',
-        'Sifferorden ska ha jämn rytm utan onödiga pauser.',
+        'Sifferorden ska ha jämn rytm utan onödiga pauser. Om två lika siffror följer direkt efter varandra, till exempel nolla nolla i 1009, gör en mycket kort men hörbar separation så båda siffrorna uppfattas tydligt.',
         'Uttala den sista siffran fullständigt innan du slutar tala.',
       ].join(' ');
     case 'transponder':
@@ -324,7 +343,7 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 
   // Deliberately preserve the complete tail. Short final words such as
   // "ett" can have low-energy endings and must never be clipped by the
-  // segment joiner. v0.6.8 preserves the complete tail and adds endpoint diagnostics plus independent audio verification for
+  // segment joiner. v0.6.9 preserves the complete tail and adds endpoint diagnostics plus independent audio verification for
   // content integrity.
   return pcm.subarray(first * 2);
 }
@@ -471,7 +490,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.8-prosodic-stability',
+              purpose: 'rt-trainer-v0.6.9-stable-voice-cache',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -641,15 +660,22 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
   const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '30');
   const tailPaddingMs = Number(process.env.OPENAI_REALTIME_TAIL_PADDING_MS || '120');
 
-  // Generate sequentially on purpose. Besides keeping API pressure low, this
-  // makes logs easy to interpret during the segmented-speech architecture experiment.
-  for (const segment of segments) {
-    const result = await generateGuardedRealtimeSegment({
+  // v0.6.9: segments are semantically independent, so generate/verify them
+  // concurrently. Preserve their deterministic order only when joining PCM.
+  // This changes latency from roughly the sum of all segment round trips toward
+  // the duration of the slowest segment (plus any retry).
+  const results = await Promise.all(segments.map((segment) =>
+    generateGuardedRealtimeSegment({
       fullNormativeText: normativeText,
       fullSpokenScript: spokenScript,
       segment,
       totalSegments: segments.length,
-    });
+    })
+  ));
+
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    const result = results[i];
     pcmParts.push(result.pcm);
     if (tailPaddingMs > 0) pcmParts.push(pcmSilence(tailPaddingMs));
     transcripts.push(result.transcript);
@@ -673,7 +699,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.8', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.9', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -729,13 +755,31 @@ app.post('/api/speech', async (req, res) => {
   }
 
   try {
+    const cacheKey = speechCacheKey(engine, text, spokenText);
+    const cached = speechCache.get(cacheKey);
+    if (cached) {
+      res.setHeader('Content-Type', cached.contentType);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('X-RT-Speech-Engine', cached.engine);
+      res.setHeader('X-RT-Speech-Fallback', cached.fallback ? '1' : '0');
+      res.setHeader('X-RT-Speech-Cache', 'HIT');
+      return res.send(cached.buffer);
+    }
+
     if (engine === 'realtime') {
       if (!spokenText) return res.status(400).json({ error: 'Exact spoken RT script missing.' });
       const result = await generateResilientSpeech(text, spokenText);
+      rememberSpeech(cacheKey, {
+        buffer: result.wav,
+        contentType: 'audio/wav',
+        engine: result.engine,
+        fallback: result.fallback,
+      });
       res.setHeader('Content-Type', 'audio/wav');
-      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
       res.setHeader('X-RT-Speech-Engine', result.engine);
       res.setHeader('X-RT-Speech-Fallback', result.fallback ? '1' : '0');
+      res.setHeader('X-RT-Speech-Cache', 'MISS');
       return res.send(result.wav);
     }
 
@@ -750,9 +794,11 @@ app.post('/api/speech', async (req, res) => {
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
+    rememberSpeech(cacheKey, { buffer, contentType: 'audio/mpeg', engine: 'tts', fallback: false });
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.setHeader('X-RT-Speech-Engine', 'tts');
+    res.setHeader('X-RT-Speech-Cache', 'MISS');
     return res.send(buffer);
   } catch (error) {
     console.error(error);
