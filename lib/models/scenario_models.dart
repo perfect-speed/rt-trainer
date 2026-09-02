@@ -22,7 +22,6 @@ class TrainingStep {
     required this.title,
     required this.instruction,
     required this.atcTransmission,
-    this.spokenTransmission,
     required this.expected,
     this.frequency = '124.500',
     this.coachNote,
@@ -32,7 +31,6 @@ class TrainingStep {
   final String title;
   final String instruction;
   final String atcTransmission;
-  final String? spokenTransmission;
   final ExpectedReadback expected;
   final String frequency;
   final String? coachNote;

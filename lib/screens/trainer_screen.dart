@@ -4,6 +4,7 @@ import '../models/scenario_models.dart';
 import '../services/readback_validator.dart';
 import '../services/asr_quality_assessor.dart';
 import '../services/spoken_rt_normalizer.dart';
+import '../services/swedish_rt_speech_formatter.dart';
 import '../services/trainer_api.dart';
 import '../services/voice_recorder.dart';
 import '../theme/app_theme.dart';
@@ -27,6 +28,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   final _voiceRecorder = VoiceRecorder();
   final _api = TrainerApi();
   final _speechNormalizer = SpokenRtNormalizer();
+  final _speechFormatter = SwedishRtSpeechFormatter();
   final _audioPlayer = AudioPlayer();
   final _events = <RadioEvent>[];
 
@@ -36,7 +38,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Grundläggande återläsning',
       instruction: 'Fristående övning: läs tillbaka bana, QNH, transponderkod och anropssignal.',
       atcTransmission: 'SE-KQX, bana 01, QNH 1016, transponder 4255.',
-      spokenTransmission: 'Sigurd Erik Kalle Qvintus Xerxes, bana nolla ett, QNH ett nolla ett sexa, transponder fyra tvåa femma femma.',
       expected: ExpectedReadback(callsign: 'SE-KQX', runway: '01', qnh: '1016', squawk: '4255'),
       coachNote: 'Detta är en mikroövning. Tidigare radiotrafik modelleras inte.',
     ),
@@ -45,7 +46,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Ny QNH och transponderkod',
       instruction: 'Värdena ändras. Läs tillbaka exakt de objekt som gavs.',
       atcTransmission: 'SE-GLA, QNH 1018, transponder 4261.',
-      spokenTransmission: 'Sigurd Erik Gustav Ludvig Adam, QNH ett nolla ett åtta, transponder fyra tvåa sexa ett.',
       expected: ExpectedReadback(callsign: 'SE-GLA', qnh: '1018', squawk: '4261'),
     ),
     TrainingStep(
@@ -53,7 +53,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Bana och QNH',
       instruction: 'Denna gång finns inget krav på transponderkod. Läs bara tillbaka det som faktiskt gavs.',
       atcTransmission: 'SE-VPT, bana 19, QNH 1009.',
-      spokenTransmission: 'Sigurd Erik Viktor Petter Tore, bana ett nia, QNH ett nolla nolla nia.',
       expected: ExpectedReadback(callsign: 'SE-VPT', runway: '19', qnh: '1009'),
     ),
     TrainingStep(
@@ -61,7 +60,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Frekvensbyte',
       instruction: 'Läs tillbaka den nya frekvensen och anropssignalen.',
       atcTransmission: 'SE-MBN, kontakta Sweden Control 124.725.',
-      spokenTransmission: 'Sigurd Erik Martin Bertil Niklas, kontakta Sweden Control ett tvåa fyra komma sju tvåa femma.',
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-MBN', frequency: '124.725'),
     ),
@@ -70,7 +68,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Kombinerad återläsning',
       instruction: 'Längre transmission. Prioritera korrekt innehåll framför hastighet.',
       atcTransmission: 'SE-RYD, bana 01, QNH 1013, transponder 4272.',
-      spokenTransmission: 'Sigurd Erik Rudolf Yngve David, bana nolla ett, QNH ett nolla ett trea, transponder fyra tvåa sju tvåa.',
       expected: ExpectedReadback(callsign: 'SE-RYD', runway: '01', qnh: '1013', squawk: '4272'),
     ),
   ];
@@ -83,7 +80,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Etablerad kontakt',
       instruction: 'Du är SE-KQX. Kontakten är etablerad och du taxar för avgång. Läs tillbaka ATC.',
       atcTransmission: 'SE-KQX, bana 19, QNH 1009.',
-      spokenTransmission: 'Sigurd Erik Kalle Qvintus Xerxes, bana ett nia, QNH ett nolla nolla nia.',
       expected: ExpectedReadback(callsign: 'SE-KQX', runway: '19', qnh: '1009'),
       coachNote: 'Scenario: tidigare tillstånd finns kvar när du går vidare.',
     ),
@@ -92,7 +88,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'ATC förkortar anropssignalen',
       instruction: 'ATC har nu introducerat den förkortade anropssignalen. Full eller korrekt förkortad form accepteras.',
       atcTransmission: 'S-QX, transponder 4261.',
-      spokenTransmission: 'Sigurd Qvintus Xerxes, transponder fyra tvåa sexa ett.',
       expected: ExpectedReadback(callsign: 'SE-KQX', squawk: '4261', allowAbbreviatedCallsign: true),
     ),
     TrainingStep(
@@ -100,7 +95,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
       title: 'Frekvensbyte',
       instruction: 'Kommunikationen fortsätter i samma scenario. Läs tillbaka frekvensen.',
       atcTransmission: 'S-QX, kontakta Sweden Control 124.725.',
-      spokenTransmission: 'Sigurd Qvintus Xerxes, kontakta Sweden Control ett tvåa fyra komma sju tvåa femma.',
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-KQX', frequency: '124.725', allowAbbreviatedCallsign: true),
     ),
@@ -189,7 +183,9 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    final spoken = _step.spokenTransmission ?? _step.atcTransmission;
+    // Normative scenario text remains the source of truth. A deterministic
+    // speech layer converts it to Swedish RT pronunciation for TTS.
+    final spoken = _speechFormatter.format(_step.atcTransmission);
     setState(() {
       _isSpeakingAtc = true;
       _speechError = null;
@@ -835,7 +831,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.5.1' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.5.2' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -852,7 +848,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.5.1 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.5.2 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

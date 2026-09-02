@@ -1,38 +1,42 @@
-# RT Trainer v0.5.1 – web deployment
+# RT Trainer v0.5.2 – web deployment
 
-Frontend: GitHub Pages from `main/docs`.
-Backend: existing Render service `rt-trainer-api`.
-
-## 1. Update source and backend
-
-Commit/push the v0.5.1 source. Render should redeploy because `server/src/server.js` now includes `/api/speech`.
-
-Check:
-
-`https://rt-trainer-api.onrender.com/health`
-
-Expected: `{"ok":true,"openaiConfigured":true}`.
-
-## 2. Build GitHub Pages frontend
+## 1. Test source
 
 ```powershell
-.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
+flutter test
 ```
 
-The script runs `flutter pub get`, `flutter test`, builds for `/rt-trainer/`, copies the result to `docs/`, and creates `docs/.nojekyll`.
-
-Then:
+## 2. Push source/backend
 
 ```powershell
 git add .
-git commit -m "Publish RT Trainer v0.5.1 mobile + TTS"
+git commit -m "Publish RT Trainer v0.5.2 natural Swedish ATC"
 git push
 ```
 
-## 3. Verify
+Wait until Render `rt-trainer-api` is **Live**. The speech endpoint contains the
+new natural Swedish ATC instructions.
 
-GitHub Actions / Pages should finish green. Then test:
+## 3. Verify locally against Render
 
-`https://perfect-speed.github.io/rt-trainer/`
+```powershell
+flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
+```
 
-Use a real phone in both portrait and landscape orientation and verify the audio prompt, `VISA TEXT`, and PTT flow.
+Check especially:
+- QNH is heard as **ku en hå**.
+- Swedish spelling alphabet sounds natural.
+- runway/QNH/transponder digits are clear but not over-articulated.
+- PTT/transcription and deterministic validation are unchanged.
+
+## 4. Build GitHub Pages
+
+```powershell
+.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
+
+git add docs
+git commit -m "Build RT Trainer v0.5.2 web"
+git push
+```
+
+Expected URL: `https://perfect-speed.github.io/rt-trainer/`

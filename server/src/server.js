@@ -85,7 +85,7 @@ app.post('/api/speech', async (req, res) => {
       model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
       voice: process.env.OPENAI_TTS_VOICE || 'alloy',
       input: text,
-      instructions: 'Tala tydlig neutral svensk flygradiotelefoni. När sifferord anges, uttala dem exakt som skrivna. Använd det förtydligade svenska radiouttalet nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Behåll tydliga pauser mellan siffergrupper och bokstaveringsord. Lägg inte till eller rätta någon information.',
+      instructions: 'Tala som en lugn och trovärdig svensk flygledare i normal radiotrafik, inte som en uppläsare eller läroboksröst. Använd naturlig svensk prosodi, korta funktionella pauser och ett jämnt, professionellt radiotempo. Behåll exakt den information som står i manuset och lägg inte till, utelämna eller rätta något. Uttala svenska bokstaveringsord naturligt. Uttala ku en hå som svensk radiotelefoni, med hå i slutet. När sifferord anges ska de uttalas exakt som skrivna: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Siffergrupper ska vara tydliga men inte överartikulerade.',
       response_format: 'mp3',
     });
 
