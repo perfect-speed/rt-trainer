@@ -28,6 +28,8 @@ services:
       - key: OPENAI_REALTIME_SEGMENT_ATTEMPTS
         value: '3'
       - key: OPENAI_REALTIME_SEGMENT_GAP_MS
-        value: '90'
+        value: '30'
+      - key: OPENAI_REALTIME_TAIL_PADDING_MS
+        value: '120'
       - key: ALLOWED_ORIGIN
         value: https://perfect-speed.github.io,http://localhost:5000

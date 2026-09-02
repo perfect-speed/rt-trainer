@@ -1,4 +1,4 @@
-# RT Trainer v0.6.7 – web deployment
+# RT Trainer v0.6.8 – web deployment
 
 ## 1. Test Flutter source
 
@@ -15,7 +15,7 @@ git push
 ```
 
 Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports
-`version: 0.6.7`.
+`version: 0.6.8`.
 
 ## 3. Verify locally against Render
 
@@ -42,7 +42,7 @@ transmissions. A rejected individual group is logged as
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add docs
-git commit -m "Build RT Trainer v0.6.7 web"
+git commit -m "Build RT Trainer v0.6.8 web"
 git push
 ```
 

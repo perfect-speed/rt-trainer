@@ -217,6 +217,67 @@ function verificationVocabularyHint(segment) {
   }
 }
 
+
+function segmentProsodyInstruction(segment) {
+  const kind = inferRtSegmentKind(segment);
+  switch (kind) {
+    case 'callsign':
+      return [
+        'Bokstaveringsorden ska komma i jämn, kompakt rytm som en enda identitetsgrupp.',
+        'Dra inte ut eller pedagogiskt betona något enskilt bokstaveringsord; detta gäller särskilt ord som Martin.',
+        'Avsluta sista bokstaveringsordet helt och lämna därefter en mycket kort naturlig radiopaus.',
+      ].join(' ');
+    case 'qnh':
+      return [
+        'Q N Helge och tryckvärdet ska sägas som en kompakt radiogrupp, inte långsam diktamen.',
+        'Sifferorden ska ha jämn rytm utan onödiga pauser.',
+        'Uttala den sista siffran fullständigt innan du slutar tala.',
+      ].join(' ');
+    case 'transponder':
+      return [
+        'Transponderkoden ska sägas som en sammanhållen fyrsiffrig radiogrupp med jämn rytm.',
+        'Ingen extra paus mellan siffrorna och ingen pedagogisk överartikulation.',
+        'Uttala den fjärde och sista siffran fullständigt innan du slutar tala.',
+      ].join(' ');
+    case 'runway':
+      return 'Säg bana följt av de två siffrorna kort och naturligt. Uttala ordet bana med normal svensk vokal och avsluta sista siffran helt.';
+    case 'frequency':
+      return 'Läs frekvensen i kompakt svensk radiorytm. Håll sifferföljden samman och avsluta sista siffran helt.';
+    default:
+      return 'Tala kompakt och naturligt. Avsluta det sista ordet fullständigt innan du slutar tala.';
+  }
+}
+
+function pcmTailDiagnostics(pcm, { sampleRate = 24000, windowMs = 55 } = {}) {
+  if (!Buffer.isBuffer(pcm) || pcm.length < 4) return { rms: 0, peak: 0, windowMs: 0 };
+  const totalSamples = Math.floor(pcm.length / 2);
+  const wanted = Math.max(1, Math.round(sampleRate * windowMs / 1000));
+  const start = Math.max(0, totalSamples - wanted);
+  let sumSq = 0;
+  let peak = 0;
+  let count = 0;
+  for (let i = start; i < totalSamples; i += 1) {
+    const v = pcm.readInt16LE(i * 2);
+    const a = Math.abs(v);
+    if (a > peak) peak = a;
+    sumSq += v * v;
+    count += 1;
+  }
+  return {
+    rms: count ? Math.round(Math.sqrt(sumSq / count)) : 0,
+    peak,
+    windowMs: Math.round(count / sampleRate * 1000),
+  };
+}
+
+function pcmHasSafeNaturalTail(pcm) {
+  const d = pcmTailDiagnostics(pcm);
+  // We explicitly ask Realtime for a tiny pause after the last token. If the
+  // waveform is still energetic at the buffer edge, regenerate rather than
+  // risk presenting a half-spoken final digit/word to the learner.
+  return { safe: d.rms < 700 && d.peak < 4200, ...d };
+}
+
 function transcriptFromCompletedResponse(response) {
   const parts = [];
   for (const item of response?.output || []) {
@@ -263,7 +324,7 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 
   // Deliberately preserve the complete tail. Short final words such as
   // "ett" can have low-energy endings and must never be clipped by the
-  // segment joiner. v0.6.7 preserves the complete tail and adds independent audio verification for
+  // segment joiner. v0.6.8 preserves the complete tail and adds endpoint diagnostics plus independent audio verification for
   // content integrity.
   return pcm.subarray(first * 2);
 }
@@ -402,13 +463,15 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               'Ingen inledning. Ingen avslutning. Inga extra ord. Ingen omskrivning.',
               `Detta är grupp ${segment.index + 1} av ${totalSegments} i ett sammanhängande radiomeddelande.`,
               'Använd naturlig svensk ATC-prosodi inom gruppen. Låt slutet vara lämpligt för att nästa informationsgrupp ska kunna följa.',
+              segmentProsodyInstruction(segment),
+              'VIKTIGT: slutför sista ordet eller sista siffran helt. Lämna därefter ungefär en tiondels sekund tystnad innan svaret avslutas; kapa aldrig sista stavelsen.',
               `HELA NORMATIVA MEDDELANDET (endast kontext, säg inte detta): ${fullNormativeText}`,
               `HELA TALMANUSET (endast prosodisk kontext, säg inte detta): ${fullSpokenScript}`,
               `AKTUELL NORMATIV GRUPP: ${segment.normative}`,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.7-resilient-hybrid-speech',
+              purpose: 'rt-trainer-v0.6.8-prosodic-stability',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -457,6 +520,7 @@ async function generateGuardedRealtimeSegment(args) {
       const generated = await generateRealtimeSegment({ ...args, attempt });
       const verificationTranscript = await transcribeGeneratedSegmentAudio(generated.pcm, args.segment, attempt);
       const verified = transcriptMatchesScriptRtAware(verificationTranscript, args.segment.spoken, args.segment);
+      const tail = pcmHasSafeNaturalTail(generated.pcm);
 
       console.info('Realtime segment diagnostic', {
         segment: args.segment.index + 1,
@@ -469,6 +533,9 @@ async function generateGuardedRealtimeSegment(args) {
         verificationTranscript,
         rawDurationMs: generated.rawDurationMs,
         durationMs: generated.durationMs,
+        tailRms: tail.rms,
+        tailPeak: tail.peak,
+        safeTail: tail.safe,
         verified,
       });
 
@@ -484,11 +551,23 @@ async function generateGuardedRealtimeSegment(args) {
         continue;
       }
 
-      return { ...generated, verificationTranscript };
+      if (!tail.safe) {
+        lastError = new Error('Realtime segment ended without a safe acoustic tail.');
+        console.warn('Realtime acoustic tail guard rejected segment', {
+          segment: args.segment.index + 1,
+          attempt,
+          expected: args.segment.spoken,
+          tailRms: tail.rms,
+          tailPeak: tail.peak,
+        });
+        continue;
+      }
+
+      return { ...generated, verificationTranscript, tailDiagnostics: tail };
     } catch (error) {
       lastError = error;
       const message = String(error?.message || error);
-      if (!message.includes('content guard') && !message.includes('audio guard')) throw error;
+      if (!message.includes('content guard') && !message.includes('audio guard') && !message.includes('acoustic tail')) throw error;
     }
   }
   throw lastError || new Error('Realtime speech segment generation failed.');
@@ -496,8 +575,11 @@ async function generateGuardedRealtimeSegment(args) {
 
 async function generateDeterministicTtsPcm(spokenScript, { reason = 'fallback' } = {}) {
   if (!client) throw new Error('OpenAI API is not configured.');
-  console.warn('Using deterministic TTS speech fallback', { reason, spokenScript });
-  const speech = await client.audio.speech.create({
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      console.warn('Using deterministic TTS speech fallback', { reason, spokenScript, attempt });
+      const speech = await client.audio.speech.create({
     model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
     voice: process.env.OPENAI_TTS_VOICE || 'cedar',
     input: spokenScript,
@@ -509,11 +591,21 @@ async function generateDeterministicTtsPcm(spokenScript, { reason = 'fallback' }
       'När texten innehåller Q N Helge: uttala Q som svenska bokstaven ku, N som svenska bokstaven enn, därefter Helge.',
       'Behåll ett naturligt men kompakt radiotempo.',
     ].join(' '),
-    response_format: 'pcm',
-  });
-  const pcm = Buffer.from(await speech.arrayBuffer());
-  if (!pcm.length) throw new Error('TTS fallback returned no audio.');
-  return pcm;
+        response_format: 'pcm',
+      });
+      const pcm = Buffer.from(await speech.arrayBuffer());
+      if (!pcm.length) throw new Error('TTS fallback returned no audio.');
+      return Buffer.concat([pcm, pcmSilence(140)]);
+    } catch (error) {
+      lastError = error;
+      console.error('Deterministic TTS fallback attempt failed', {
+        attempt,
+        message: String(error?.message || error),
+      });
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  }
+  throw lastError || new Error('TTS fallback failed.');
 }
 
 async function generateResilientSpeech(normativeText, spokenScript) {
@@ -546,7 +638,8 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
   const transcripts = [];
   const verificationTranscripts = [];
   const durationsMs = [];
-  const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '90');
+  const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '30');
+  const tailPaddingMs = Number(process.env.OPENAI_REALTIME_TAIL_PADDING_MS || '120');
 
   // Generate sequentially on purpose. Besides keeping API pressure low, this
   // makes logs easy to interpret during the segmented-speech architecture experiment.
@@ -558,6 +651,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
       totalSegments: segments.length,
     });
     pcmParts.push(result.pcm);
+    if (tailPaddingMs > 0) pcmParts.push(pcmSilence(tailPaddingMs));
     transcripts.push(result.transcript);
     verificationTranscripts.push(result.verificationTranscript);
     durationsMs.push(result.durationMs);
@@ -571,6 +665,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
     verificationTranscripts,
     durationsMs,
     joinSilenceMs,
+    tailPaddingMs,
   });
 
   return pcm16ToWav(Buffer.concat(pcmParts), 24000, 1);
@@ -578,7 +673,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.7', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.8', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {

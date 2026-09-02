@@ -1,19 +1,22 @@
-# RT Trainer v0.6.7 – Resilient hybrid speech
+# RT Trainer v0.6.8 – Prosodic stability
 
 ## Design goal
 
-Preserve the natural Realtime voice while making the downstream verifier aware
-of Swedish radiotelephony vocabulary without leaking the answer into ASR.
+Keep the natural Realtime voice achieved in v0.6.x while making segment endings
+and information-group rhythm more reproducible.
 
-> Scenario/world state owns reality. Generative AI owns expression.
+> Stringens i reglerna – realism i uttrycket – progression i komplexiteten.
 
-## Why v0.6.7 exists
+## Why v0.6.8 exists
 
-v0.6.5 demonstrated a second-model problem: Realtime could report the correct
-spoken script while the independent ASR transcribed `Sigurd` as `Sigrid`,
-`Qvintus` as `Kvintus`, or `Xerxes` as ordinary Swedish words. The guard then
-rejected potentially correct audio. A second AI is not an oracle; its own error
-model must be handled.
+v0.6.7 was operationally much more robust: audio started reliably and several
+cases were fully acceptable. Remaining faults were narrow and acoustic/prosodic:
+occasionally half of the final digit in a transponder code or QNH was lost,
+QNH could be read too slowly, and an individual spelling word such as `Martin`
+could receive excessive duration.
+
+Those observations argue against changing the overall architecture. v0.6.8
+therefore changes only the speech-realisation boundary.
 
 ## Architecture
 
@@ -24,43 +27,55 @@ Deterministic scenario
 Locked Swedish RT script
         |
         v
+Segment-specific prosody instruction
+        |
+        v
 Segmented Realtime audio
         |
-        +--> Realtime self-transcript guard
+        +--> Realtime transcript guard
+        |
+        +--> independent RT-aware audio ASR
+        |
+        +--> acoustic endpoint/tail guard
         |
         v
-Generated PCM
+Accepted PCM + deterministic tail padding
         |
         v
-Independent RT-aware ASR
-  generic vocabulary only
-  no expected operational values
+Concatenated ATC transmission
         |
-        v
-Domain-aware canonicalisation
-        |
-        v
-Exact deterministic comparison
-        |
-        v
-Accept / retry
+        +--> if Realtime fails: exact-script TTS fallback
 ```
 
-## Verification rules
+## Prosody policy
 
-1. The ASR verifier is told the segment *type* but not its correct value.
-2. Callsign verification receives the Swedish spelling alphabet as vocabulary support, not the expected registration.
-3. QNH verification receives generic `Q N Helge` terminology but not the expected pressure.
-4. Transponder, runway and frequency values remain exact after transcription.
-5. A small, explicit alias table handles recurring ASR-only spelling confusions.
-6. `sex`/`söks` may map to `Xerxes` only in a callsign-only segment; elsewhere `sex` remains digit 6.
-7. The deterministic script remains the final source of truth.
-8. Failed segments are regenerated up to three times by default.
+- Callsign: one compact identity group with even rhythmic weight. Do not stretch
+  any single Swedish spelling word.
+- QNH: `Q N Helge` plus pressure is a compact information group, not dictation.
+- Transponder: the four digits form one rhythmic group; the fourth digit must be
+  fully completed.
+- Runway/frequency: normal Swedish RT cadence, concise rather than pedagogical.
+- Every segment must complete its final token before ending.
 
-## Research relevance
+## Acoustic tail guard
 
-This version separates two uncertainties that are often conflated: uncertainty
-in a generative speech model and uncertainty in the model used to verify it.
-The verifier therefore receives domain vocabulary but not the correct answer.
-That reduces verification error without allowing the verifier to simply infer
-the expected output from context.
+Independent transcription can recognise a word even if the audible endpoint is
+perceptually clipped. v0.6.8 therefore also looks at the waveform endpoint.
+Realtime is asked to leave a tiny pause after the final token. If the last
+55 ms is still too energetic (RMS/peak threshold), that generation is retried.
+This is a heuristic safety signal, not semantic verification.
+
+After acceptance, 120 ms of zero PCM is appended deterministically. The
+inter-segment join gap is only 30 ms. This gives the final phoneme room to decay
+without recreating the slow, separated cadence that earlier versions produced.
+
+## Resilience / no-silence policy
+
+A Realtime content, ASR or acoustic-tail rejection does not directly become a
+502. The backend retries the segment; if verified Realtime speech still cannot
+be produced, it falls back to deterministic exact-script TTS. The TTS fallback
+itself gets two attempts and a safe tail. Client-side transient HTTP retry from
+v0.6.7 remains in place for Render cold-start/deployment errors.
+
+This cannot guarantee audio through a total network/API outage, but it prevents
+our own speech guards from being the sole cause of a silent exercise.

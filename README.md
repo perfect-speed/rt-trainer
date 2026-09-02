@@ -1,39 +1,43 @@
-# RT Trainer v0.6.7 – Resilient hybrid speech
+# RT Trainer v0.6.8 – Prosodic stability
 
-v0.6.7 keeps the segmented Realtime speech architecture from v0.6.5, but
-changes the independent audio verifier. The verifier is now domain-aware
-without receiving the expected callsign, runway, QNH, transponder code or
-frequency as transcription hints.
+v0.6.8 keeps the v0.6.7 resilient hybrid speech architecture and stabilises
+segment endings and within-group rhythm. The goal is to retain the natural
+Realtime voice while reducing the intermittent half-spoken final digit/word
+heard in QNH and transponder groups, and reducing slow/over-emphasised spelling
+words such as `Martin`.
 
 Speech path:
 
 ```text
 normative scenario
   -> deterministic Swedish RT speech script
-  -> segmented Realtime speech generation
-  -> Realtime transcript guard
-  -> independent RT-aware ASR of generated PCM
-  -> deterministic comparison against the locked script
-  -> accepted segment / retry
-  -> concatenated WAV to Flutter
+  -> segmented Realtime generation
+  -> transcript + independent audio verification
+  -> acoustic tail check
+  -> retry if content/tail is unsafe
+  -> short deterministic tail padding
+  -> concatenated WAV
+  -> deterministic TTS fallback if Realtime cannot be accepted
 ```
 
-The verification ASR defaults to `gpt-transcribe`. Its prompt contains only
-generic Swedish radiotelephony vocabulary and the *type* of information group.
-For example, a callsign segment gets the Swedish spelling alphabet as vocabulary
-support, but not `SE-KQX` as a hint. A QNH segment gets generic guidance about
-`Q N Helge`, but not the pressure value.
+### v0.6.8 changes
 
-After transcription, the deterministic verifier normalises a small set of
-known ASR confusions such as `Sigrid` -> `Sigurd`, `Kvintus` -> `Qvintus`, and
-(in callsign-only context) `sex`/`söks` -> `Xerxes`. The final comparison is
-still made against the locked deterministic script. Numerical values remain
-strict: no wrong runway, QNH, transponder code or frequency is repaired toward
-the expected answer.
+- Segment-specific prosody instructions:
+  - callsigns: even compact rhythm; no spelling word may be stretched;
+  - QNH: compact radio group, not slow dictation;
+  - transponder: four digits as one rhythmic group;
+  - runway/frequency: concise Swedish RT cadence.
+- Realtime is explicitly instructed to complete the last token and leave a
+  short acoustic pause before ending the segment.
+- A waveform endpoint guard logs RMS/peak energy in the final 55 ms and retries
+  a segment that still appears acoustically active at the buffer edge.
+- Accepted segments receive 120 ms deterministic tail padding. The extra join
+  gap is reduced to 30 ms, giving protection against clipped endings without a
+  large artificial pause between information groups.
+- The deterministic TTS fallback now retries once and appends a safe audio tail,
+  preserving the v0.6.7 rule that a speech-guard rejection must not by itself
+  result in silence.
 
-Render diagnostics include segment type, expected speech script, Realtime
-transcript, independent verification transcript, durations, attempt number and
-verification result.
-
-This version is intended to reduce false 502 rejections caused by the verifier
-mishearing Swedish spelling words while retaining the independent audio guard.
+The operational content remains locked by the deterministic scenario and
+validator. Prosody may vary; runway, QNH, transponder, frequency and callsign
+content may not.
