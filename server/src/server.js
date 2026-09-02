@@ -492,7 +492,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.10-warmup-latency',
+              purpose: 'rt-trainer-v0.7.0-natural-whole-utterance',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -637,12 +637,238 @@ async function generateDeterministicTtsPcm(spokenScript, { reason = 'fallback' }
   throw lastError || new Error('TTS fallback failed.');
 }
 
+function wholeUtteranceTranscriptMatchesScript(transcript, spokenScript) {
+  const a = canonicalSpeechTokens(transcript);
+  const b = canonicalSpeechTokens(spokenScript);
+  if (!a.length || !b.length) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function extractCoreAudioFacts(value) {
+  const tokens = canonicalSpeechTokens(normalizeRtVerifierText(value, { segmentKind: 'generic' }));
+  const digits = tokens.filter((token) => /^\d$/.test(token));
+  const callsigns = tokens
+    .filter((token) => /^letters:se[a-zåäö]{3}$/i.test(token))
+    .map((token) => token.toLowerCase());
+  return { digits, callsigns };
+}
+
+function wholeAudioCoreMatches(verificationTranscript, spokenScript) {
+  const heard = extractCoreAudioFacts(verificationTranscript);
+  const expected = extractCoreAudioFacts(spokenScript);
+
+  // The independent ASR is used to verify the hard operational payload in the
+  // actual waveform, not Swedish Q/K letter acoustics or exact orthography.
+  // Numbers must be byte-for-byte equivalent in sequence. Callsign is checked
+  // when the verifier reconstructed one with confidence; otherwise Realtime's
+  // own transcript guard remains the lexical check.
+  if (JSON.stringify(heard.digits) !== JSON.stringify(expected.digits)) return false;
+  if (expected.callsigns.length && heard.callsigns.length &&
+      JSON.stringify(heard.callsigns) !== JSON.stringify(expected.callsigns)) return false;
+  return true;
+}
+
+async function transcribeGeneratedWholeAudio(pcm, attempt) {
+  if (!client) throw new Error('OpenAI API is not configured.');
+  const wav = pcm16ToWav(pcm, 24000, 1);
+  const audio = await toFile(wav, `rt-whole-attempt-${attempt}.wav`, { type: 'audio/wav' });
+  const prompt = [
+    'Detta är ett komplett kort svenskt ATC-meddelande. Transkribera exakt vad som faktiskt hörs.',
+    'Du är en oberoende observatör och får INTE facit för anropssignal, bana, QNH, transponderkod eller frekvens.',
+    'Rätta inte mot vad du tror borde sägas. Lägg inte till saknade ord eller siffror.',
+    'Bevara alla små extra ord om de faktiskt hörs, eftersom fraseologin ska kunna granskas.',
+    'Svenska bokstaveringsalfabetet kan förekomma: Adam Bertil Cesar David Erik Filip Gustav Helge Ivar Johan Kalle Ludvig Martin Niklas Olof Petter Qvintus Rudolf Sigurd Tore Urban Viktor Wilhelm Xerxes Yngve Zäta Åke Ärlig Östen.',
+    'QNH kan i svensk radiotelefoni uttalas Q N Helge. Återge vad du faktiskt hör även om en enskild bokstav är akustiskt osäker.',
+    'Sifferföljder ska återges exakt. Gissa aldrig en saknad slutsiffra.',
+  ].join('\n');
+  const transcription = await client.audio.transcriptions.create({
+    file: audio,
+    model: process.env.OPENAI_SPEECH_VERIFY_MODEL || 'gpt-transcribe',
+    language: 'sv',
+    prompt,
+    temperature: 0,
+  });
+  return String(transcription.text || '').trim();
+}
+
+function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt = 1 }) {
+  return new Promise((resolve, reject) => {
+    const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-1.5';
+    const voice = process.env.OPENAI_REALTIME_VOICE || 'marin';
+    const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+    const chunks = [];
+    let transcript = '';
+    let requestSent = false;
+    let settled = false;
+
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch (_) {}
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+
+    const finish = () => {
+      if (settled) return;
+      if (!chunks.length) return fail(new Error('Realtime returned no audio.'));
+      if (!wholeUtteranceTranscriptMatchesScript(transcript, spokenScript)) {
+        console.warn('Whole-utterance lexical guard rejected output', {
+          attempt,
+          expected: spokenScript,
+          realtimeTranscript: transcript,
+          normativeText,
+        });
+        return fail(new Error('Whole-utterance lexical guard rejected generated wording.'));
+      }
+      const pcm = Buffer.concat(chunks);
+      settled = true;
+      try { ws.close(); } catch (_) {}
+      resolve({ pcm, transcript, durationMs: pcmDurationMs(pcm) });
+    };
+
+    const ws = new WebSocket(url, {
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    });
+    const timeout = setTimeout(() => fail(new Error('Realtime whole-utterance speech timed out.')), 25000);
+
+    ws.on('error', fail);
+    ws.on('close', () => {
+      clearTimeout(timeout);
+      if (!settled && !chunks.length) fail(new Error('Realtime connection closed before audio completed.'));
+    });
+
+    ws.on('message', (message) => {
+      let event;
+      try { event = JSON.parse(message.toString()); } catch (_) { return; }
+
+      if (event.type === 'session.created') {
+        ws.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            type: 'realtime',
+            model,
+            output_modalities: ['audio'],
+            audio: { output: { format: { type: 'audio/pcm', rate: 24000 }, voice } },
+            instructions: [
+              'Du är en erfaren svensk flygledare och talar naturlig svensk VHF-radiotelefoni.',
+              'Det ska låta som en verklig, sammanhängande radiosändning, inte uppläst text, talsyntes eller pedagogisk diktamen.',
+              'Håll professionellt tempo, naturlig rytm och prosodi över HELA meddelandet.',
+              'Det exakta talmanuset är normativt låst. Säg alla ord och värden i manuset, i samma ordning, och inget annat.',
+              'Lägg aldrig till hjälpord som svara, kod, ställ in, sätt, bekräfta eller andra ord som inte står i talmanuset.',
+              'Svenska bokstaveringsord ska uttalas naturligt och kompakt som en anropssignal, utan extra paus efter Sigurd Erik.',
+              'När talmanuset innehåller Q N Helge: uttala Q som svenska bokstaven ku, N som svenska bokstaven enn, följt av Helge.',
+              'Sifferord ska vara tydliga men inte överartikulerade. Slutför alltid sista siffran helt.',
+              'Du får variera prosodin men inte ordalydelsen eller det operativa innehållet.',
+            ].join(' '),
+          },
+        }));
+        return;
+      }
+
+      if (event.type === 'session.updated' && !requestSent) {
+        requestSent = true;
+        ws.send(JSON.stringify({
+          type: 'response.create',
+          response: {
+            conversation: 'none',
+            input: [],
+            output_modalities: ['audio'],
+            max_output_tokens: 220,
+            instructions: [
+              'Sänd EN enda naturlig, sammanhängande svensk ATC-replik.',
+              'Läs exakt talmanuset nedan. Ingen inledning, ingen avslutning, inga extra ord och ingen omskrivning.',
+              'Prioritera naturlig helfrasprosodi. Gör inte separata syntetiska segment av informationsgrupperna.',
+              `NORMATIV REFERENS (ändra inget): ${normativeText}`,
+              `EXAKT TALMANUS: ${spokenScript}`,
+            ].join('\n'),
+            metadata: { purpose: 'rt-trainer-v0.7.0-natural-whole-utterance', attempt: String(attempt) },
+          },
+        }));
+        return;
+      }
+
+      if (event.type === 'response.output_audio.delta' && typeof event.delta === 'string') {
+        chunks.push(Buffer.from(event.delta, 'base64'));
+        return;
+      }
+      if (event.type === 'response.output_audio_transcript.delta' && typeof event.delta === 'string') {
+        transcript += event.delta;
+        return;
+      }
+      if (event.type === 'response.output_audio_transcript.done' && typeof event.transcript === 'string') {
+        transcript = event.transcript;
+        return;
+      }
+      if (event.type === 'response.done') {
+        clearTimeout(timeout);
+        if (!transcript.trim()) transcript = transcriptFromCompletedResponse(event.response);
+        if (event.response?.status === 'failed') {
+          return fail(new Error(event.response?.status_details?.error?.message || 'Realtime response failed.'));
+        }
+        return finish();
+      }
+      if (event.type === 'error') {
+        clearTimeout(timeout);
+        return fail(new Error(event.error?.message || 'Realtime API error.'));
+      }
+    });
+  });
+}
+
+async function generateNaturalWholeUtteranceSpeech(normativeText, spokenScript) {
+  const startedAt = Date.now();
+  const maxAttempts = Number(process.env.OPENAI_REALTIME_WHOLE_ATTEMPTS || '3');
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const generationStartedAt = Date.now();
+      const generated = await generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt });
+      const generationMs = Date.now() - generationStartedAt;
+
+      // Second-pass ASR checks the actual waveform for the hard payload. It is
+      // deliberately NOT allowed to reject Q/K ambiguity in "Q N Helge"; the
+      // Realtime transcript guard above owns exact lexical phraseology.
+      const verificationStartedAt = Date.now();
+      const verificationTranscript = await transcribeGeneratedWholeAudio(generated.pcm, attempt);
+      const verificationMs = Date.now() - verificationStartedAt;
+      const coreVerified = wholeAudioCoreMatches(verificationTranscript, spokenScript);
+
+      console.info('Whole-utterance speech diagnostic', {
+        attempt,
+        expected: spokenScript,
+        realtimeTranscript: generated.transcript,
+        verificationTranscript,
+        coreVerified,
+        durationMs: generated.durationMs,
+        generationMs,
+        verificationMs,
+        totalElapsedMs: Date.now() - startedAt,
+      });
+
+      if (!coreVerified) {
+        lastError = new Error('Independent whole-audio payload guard rejected generated speech.');
+        continue;
+      }
+
+      return pcm16ToWav(Buffer.concat([generated.pcm, pcmSilence(100)]), 24000, 1);
+    } catch (error) {
+      lastError = error;
+      console.warn('Whole-utterance attempt rejected', {
+        attempt,
+        message: String(error?.message || error),
+      });
+    }
+  }
+  throw lastError || new Error('Whole-utterance Realtime generation failed.');
+}
+
 async function generateResilientSpeech(normativeText, spokenScript) {
   try {
-    const wav = await generateSegmentedRealtimeSpeech(normativeText, spokenScript);
-    return { wav, engine: 'realtime', fallback: false };
+    const wav = await generateNaturalWholeUtteranceSpeech(normativeText, spokenScript);
+    return { wav, engine: 'realtime-whole', fallback: false };
   } catch (realtimeError) {
-    console.error('Realtime verified speech failed; falling back to deterministic TTS', {
+    console.error('Natural whole-utterance speech failed; using deterministic TTS fallback', {
       message: String(realtimeError?.message || realtimeError),
       normativeText,
       spokenScript,
@@ -711,7 +937,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.10', speechDefault: 'realtime', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.7.0', speechDefault: 'realtime', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -723,7 +949,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.6.10', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.7.0', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {

@@ -1,66 +1,33 @@
-# RT Trainer v0.6.10 – Warm start and latency diagnostics
+# RT Trainer v0.7.0 — Natural whole-utterance speech
 
-## Goal
+## Design hypothesis
 
-Preserve the natural, repeatable voice achieved in v0.6.9 while separating two latency mechanisms:
+Recover the natural whole-utterance prosody seen in v0.6.0 while retaining the reliability work learned in v0.6.x.
 
-1. **platform cold start** – Render waking the Node service after inactivity;
-2. **normal speech latency** – Realtime generation, independent audio verification, retries and assembly.
+**Scenario/world state owns reality. Realtime owns expression. Validation decides whether an expression is accepted.**
 
-## Warm-up path
+### Speech path
 
-```text
-Welcome screen opens
-        |
-        +--> GET /api/warmup  (starts immediately)
-        |
-Learner reads instructions
-        |
-STARTA DEMO
-        |
-        +--> await same warm-up Future if still pending
-        |
-Trainer opens
-        |
-        +--> first real /api/speech request
-```
+1. Flutter derives the deterministic Swedish spoken script from the normative ATC transmission.
+2. Realtime generates the complete ATC transmission as one utterance — no segmented synthesis.
+3. Realtime's output transcript must canonicalize to the exact spoken script. Extra words such as `svara` therefore reject the take.
+4. A separate ASR pass listens to the actual waveform and verifies the hard operational payload (all digit sequences and, when confidently reconstructed, callsign). It does not reject acoustically ambiguous Q/K spelling in `Q N Helge`.
+5. Rejected takes are regenerated as complete natural utterances, up to three attempts.
+6. If all natural takes fail, deterministic TTS remains the no-sound safety fallback.
+7. Accepted audio is cached; `LYSSNA IGEN` replays the exact same waveform with no network call.
 
-The warm-up endpoint performs no speech generation and consumes no OpenAI audio call. Its purpose is to make the Render process live before the first operational request.
+### Preserved from v0.6.10
 
-## Latency instrumentation
+- Render warm-up before the first exercise.
+- Stable configured controller voice.
+- Client and server audio caching.
+- Retry handling for transient backend errors.
+- Detailed latency diagnostics.
 
-Backend logs now expose measurement points around the speech pipeline:
+### What v0.7.0 deliberately removes
 
-```text
-Speech request received
-  requestId
-  uptimeSeconds
+- Segment-by-segment generation.
+- Segment joins and per-segment prosody micromanagement.
+- The assumption that more generation constraints automatically improve the learner experience.
 
-Realtime segment diagnostic
-  generationMs
-  verificationMs
-  elapsedMs
-
-Realtime segmented speech accepted
-  totalMs
-
-Speech request timing
-  cache HIT/MISS
-  engine/fallback
-  totalMs
-```
-
-If the first request arrives with `uptimeSeconds` close to zero after a long browser wait, the long delay occurred in the hosting cold start before application code could serve the request. If `uptimeSeconds` is already high but `totalMs` is large, the bottleneck is inside the speech pipeline.
-
-## Callsign rhythm
-
-A Swedish registration is treated as one identity group. Realtime is explicitly instructed not to create a boundary after the initial `Sigurd Erik`. The target rhythm is even across all five spelling words, including SE-GLA and SE-RYD.
-
-## Invariants retained
-
-- deterministic scenario owns operational truth;
-- Realtime owns voice/prosody only;
-- independent audio verification remains active;
-- unsafe/failed Realtime audio falls back to exact-script TTS;
-- accepted audio is cached before playback;
-- `LYSSNA IGEN` never regenerates accepted audio.
+The new control principle is: **control acceptance, not prosody.**
