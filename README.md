@@ -1,34 +1,34 @@
-# RT Trainer v0.5.4 – ATC prosody + robust frequency parsing
+# RT Trainer v0.5.5 – Prosodic grouping
 
-This version keeps the v0.5.1 mobile/PTT architecture and focuses on the ATC
-experience before adding more functionality.
+This iteration deliberately adds no new training functionality. It focuses on the perceived rhythm of Swedish radiotelephony.
 
-## Changes in v0.5.4
+## Changes in v0.5.5
 
-- Accepts Swedish VHF frequency readback both with and without an explicitly spoken `komma`.
-- Handles clarified digit forms such as `tvåa`/`femma` around the decimal marker.
-- Uses the higher-quality `cedar` TTS voice by default and a slightly tighter radio pace.
-- Refines the speech prompt toward natural Swedish ATC prosody rather than narrator-style speech.
-- Keeps the normative scenario text separate from the spoken presentation layer.
+- Introduces **prosodic grouping** as an explicit speech-design principle.
+- QNH is rendered internally for TTS as `ku en Helge` so that it is heard as the compact Swedish RT expression **Q N Helge**, rather than three equally separated items.
+- TTS instructions now distinguish strongly between:
+  - **very short spacing within an information group**, and
+  - **a short natural pause between information groups**.
+- Callsigns are explicitly treated as one rhythmic identity group; the model is instructed not to insert isolated pauses between Swedish spelling words.
+- QNH + pressure digits are one group; transponder is a separate group.
+- No changes to the deterministic validation rules in this iteration.
 
-## Local check
+The design rule remains:
+
+> Stringens i reglerna – realism i uttrycket – progression i komplexiteten.
+
+## Verification
+
+After copying the files into the project directory:
 
 ```powershell
 flutter test
-flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-For the new speech behaviour to work against Render, push the updated `server/`
-first and wait until `rt-trainer-api` is Live.
+No new Flutter dependency has been added, so `flutter pub get` is not required solely for this version.
 
-## Web deployment
+Suggested commit message:
 
 ```powershell
-.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
-
-git add .
-git commit -m "Publish RT Trainer v0.5.4 ATC prosody"
-git push
+git commit -m "Add prosodic grouping to Swedish RT speech"
 ```
-
-The deploy script recreates `docs/.nojekyll` automatically.
