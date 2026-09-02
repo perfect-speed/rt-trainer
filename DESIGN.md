@@ -1,84 +1,66 @@
-# RT Trainer v0.6.5 – Verified segmented speech
+# RT Trainer v0.6.6 – RT-aware audio verification
 
 ## Design goal
 
-Keep the naturalness obtained with Realtime speech while enforcing stable,
-repeatable Swedish radiotelephony content.
-
-The governing rule remains:
+Preserve the natural Realtime voice while making the downstream verifier aware
+of Swedish radiotelephony vocabulary without leaking the answer into ASR.
 
 > Scenario/world state owns reality. Generative AI owns expression.
 
-v0.6.5 adds a second observation point after the generative speech model.
+## Why v0.6.6 exists
 
-## Why this version exists
-
-v0.6.4 showed that identical input could produce different audible output:
-Q N Helge could vary, short final digits could disappear, and a segment could
-sound truncated even when Realtime's own transcript looked complete.
-Therefore the model's self-transcript is not sufficient evidence that the
-actual audio contains the required phraseology.
+v0.6.5 demonstrated a second-model problem: Realtime could report the correct
+spoken script while the independent ASR transcribed `Sigurd` as `Sigrid`,
+`Qvintus` as `Kvintus`, or `Xerxes` as ordinary Swedish words. The guard then
+rejected potentially correct audio. A second AI is not an oracle; its own error
+model must be handled.
 
 ## Architecture
 
 ```text
-Scenario / world state
+Deterministic scenario
         |
         v
-Deterministic RT formatter
+Locked Swedish RT script
         |
         v
-Information groups
-        |
-        v
-Realtime audio generation
+Segmented Realtime audio
         |
         +--> Realtime self-transcript guard
         |
         v
-Generated PCM audio
+Generated PCM
         |
         v
-Independent ASR verification
+Independent RT-aware ASR
+  generic vocabulary only
+  no expected operational values
         |
         v
-Deterministic token comparison
+Domain-aware canonicalisation
         |
         v
-Accepted segment / retry
+Exact deterministic comparison
         |
         v
-Concatenated ATC WAV
+Accept / retry
 ```
 
-The independent verifier is deliberately downstream of audio generation. It
-therefore measures what is present in the actual PCM rather than trusting the
-generator's textual side channel.
+## Verification rules
 
-## Stabilisation rules
+1. The ASR verifier is told the segment *type* but not its correct value.
+2. Callsign verification receives the Swedish spelling alphabet as vocabulary support, not the expected registration.
+3. QNH verification receives generic `Q N Helge` terminology but not the expected pressure.
+4. Transponder, runway and frequency values remain exact after transcription.
+5. A small, explicit alias table handles recurring ASR-only spelling confusions.
+6. `sex`/`söks` may map to `Xerxes` only in a callsign-only segment; elsewhere `sex` remains digit 6.
+7. The deterministic script remains the final source of truth.
+8. Failed segments are regenerated up to three times by default.
 
-1. Operational values are deterministic and never inferred by the speech model.
-2. Each comma-delimited information group is generated separately.
-3. Realtime's own transcript must match the deterministic speech script.
-4. The generated audio is independently transcribed and must match the same script.
-5. Rejected segments are regenerated, up to three attempts by default.
-6. Segment tails are never trimmed; only leading silence may be reduced.
-7. QNH is represented in the speech layer as `Q N Helge`, while the normative object remains `QNH`.
-8. ASR normalisation may repair labels such as `Tune Helge` -> QNH, but may never repair a numerical value toward the expected answer.
+## Research relevance
 
-## Diagnostic measurements
-
-Every accepted/rejected segment logs expected script, Realtime transcript,
-independent audio transcript, attempt, raw audio duration, post-leading-trim
-duration and verification result. This gives us measurement points between
-system blocks rather than only observing the final audible output.
-
-## Experimental question
-
-Can a generative audio model be used for natural prosody in a norm-governed
-training system if deterministic content is checked independently after audio
-generation?
-
-Trade-off: v0.6.5 is expected to have more latency and API usage than v0.6.4.
-That is acceptable at this prototype stage because phraseology stability is
-the variable being tested.
+This version separates two uncertainties that are often conflated: uncertainty
+in a generative speech model and uncertainty in the model used to verify it.
+The verifier therefore receives domain vocabulary but not the correct answer.
+That reduces verification error without allowing the verifier to simply infer
+the expected output from context.

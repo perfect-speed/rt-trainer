@@ -24,7 +24,7 @@ services:
       - key: OPENAI_REALTIME_VOICE
         value: marin
       - key: OPENAI_SPEECH_VERIFY_MODEL
-        value: gpt-4o-transcribe
+        value: gpt-transcribe
       - key: OPENAI_REALTIME_SEGMENT_ATTEMPTS
         value: '3'
       - key: OPENAI_REALTIME_SEGMENT_GAP_MS

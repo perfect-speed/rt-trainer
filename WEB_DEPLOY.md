@@ -1,4 +1,4 @@
-# RT Trainer v0.6.5 – web deployment
+# RT Trainer v0.6.6 – web deployment
 
 ## 1. Test Flutter source
 
@@ -15,7 +15,7 @@ git push
 ```
 
 Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports
-`version: 0.6.5`.
+`version: 0.6.6`.
 
 ## 3. Verify locally against Render
 
@@ -32,7 +32,7 @@ Test **RÖST · REALTIME** first. Evaluate separately:
 - pauses/seams between groups;
 - delay before playback starts.
 
-The backend log should show `Realtime segmented speech accepted` for successful
+The backend log should show `Realtime RT-aware audio verification accepted` for successful
 transmissions. A rejected individual group is logged as
 `Realtime segment guard rejected output`.
 
@@ -42,7 +42,7 @@ transmissions. A rejected individual group is logged as
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add docs
-git commit -m "Build RT Trainer v0.6.5 web"
+git commit -m "Build RT Trainer v0.6.6 web"
 git push
 ```
 

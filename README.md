@@ -1,9 +1,9 @@
-# RT Trainer v0.6.5 – Verified segmented speech
+# RT Trainer v0.6.6 – RT-aware audio verification
 
-v0.6.5 keeps the natural Realtime voice from the v0.6 branch, but adds an
-independent verification pass over the audio that was actually generated.
-The purpose is to improve repeatability without moving operational truth into
-the generative model.
+v0.6.6 keeps the segmented Realtime speech architecture from v0.6.5, but
+changes the independent audio verifier. The verifier is now domain-aware
+without receiving the expected callsign, runway, QNH, transponder code or
+frequency as transcription hints.
 
 Speech path:
 
@@ -12,30 +12,28 @@ normative scenario
   -> deterministic Swedish RT speech script
   -> segmented Realtime speech generation
   -> Realtime transcript guard
-  -> independent ASR of the generated PCM audio
-  -> deterministic content comparison
-  -> concatenate accepted segments
-  -> WAV to Flutter
+  -> independent RT-aware ASR of generated PCM
+  -> deterministic comparison against the locked script
+  -> accepted segment / retry
+  -> concatenated WAV to Flutter
 ```
 
-The important change is the second guard. A Realtime response can report a
-complete transcript even when the audio sounds truncated or different. v0.6.5
-therefore transcribes the generated audio itself and only accepts a segment
-when that independent transcript contains the same deterministic RT content.
-A failed segment is regenerated, up to three attempts by default.
+The verification ASR defaults to `gpt-transcribe`. Its prompt contains only
+generic Swedish radiotelephony vocabulary and the *type* of information group.
+For example, a callsign segment gets the Swedish spelling alphabet as vocabulary
+support, but not `SE-KQX` as a hint. A QNH segment gets generic guidance about
+`Q N Helge`, but not the pressure value.
 
-For diagnostics, Render logs now include for every segment:
-- exact expected speech script
-- Realtime's own transcript
-- independent verification transcript
-- raw and trimmed audio duration
-- attempt number and accepted/rejected state
+After transcription, the deterministic verifier normalises a small set of
+known ASR confusions such as `Sigrid` -> `Sigurd`, `Kvintus` -> `Qvintus`, and
+(in callsign-only context) `sex`/`söks` -> `Xerxes`. The final comparison is
+still made against the locked deterministic script. Numerical values remain
+strict: no wrong runway, QNH, transponder code or frequency is repaired toward
+the expected answer.
 
-QNH remains normative as `QNH 1016`, while the isolated speech script now uses
-`Q N Helge ett nolla ett sexa`. The voice instruction explicitly requests
-Swedish Q and N pronunciation. The verifier accepts common ASR spelling such
-as `Tune Helge` as a transcription artifact, but does not change the QNH value.
+Render diagnostics include segment type, expected speech script, Realtime
+transcript, independent verification transcript, durations, attempt number and
+verification result.
 
-This version intentionally adds some latency and API cost. It is an experiment
-in whether independent audio verification can preserve Realtime naturalness
-while making phraseology substantially more reproducible.
+This version is intended to reduce false 502 rejections caused by the verifier
+mishearing Swedish spelling words while retaining the independent audio guard.

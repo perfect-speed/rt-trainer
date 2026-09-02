@@ -132,6 +132,91 @@ function transcriptMatchesScript(transcript, script) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+const rtVerifierAliases = {
+  // Common ASR confusions for Swedish spelling words. These aliases are used
+  // only after transcription; they are never sent as the expected callsign.
+  sigrid: 'sigurd',
+  sigur: 'sigurd',
+  gustaf: 'gustav',
+  ludwick: 'ludvig',
+  ludvik: 'ludvig',
+  kvintus: 'qvintus',
+  quintus: 'qvintus',
+  qvintus: 'qvintus',
+  petter: 'petter',
+  victor: 'viktor',
+  wilhelm: 'wilhelm',
+  'åke': 'åke',
+  zake: 'zäta',
+};
+
+function normalizeRtVerifierText(value, { segmentKind = 'generic' } = {}) {
+  let text = normalizeSpeechTranscript(value);
+
+  // Domain labels: normalize common ASR spellings without touching any value.
+  text = text
+    .replace(/q\s*n\s*h\b/g, 'qnh')
+    .replace(/q\s*n\s*helge\b/g, 'qnh')
+    .replace(/\bku\s+en+n?\s+helge\b/g, 'qnh')
+    .replace(/\btune\s+helge\b/g, 'qnh')
+    .replace(/\btun\s+helge\b/g, 'qnh');
+
+  const words = text.split(/\s+/).filter(Boolean).map((word) => rtVerifierAliases[word] || word);
+
+  // In a callsign-only segment, ASR sometimes turns the final Swedish spelling
+  // word Xerxes into the ordinary word "sex" or "söks". Treat that as an ASR
+  // alias only in this narrow context; in number-bearing segments, sex remains 6.
+  if (segmentKind === 'callsign') {
+    for (let i = 0; i < words.length; i += 1) {
+      if (words[i] === 'sex' || words[i] === 'söks' || words[i] === 'soks') words[i] = 'xerxes';
+    }
+  }
+
+  return words.join(' ');
+}
+
+function inferRtSegmentKind(segment) {
+  const normative = normalizeSpeechTranscript(segment?.normative || '');
+  const spoken = normalizeSpeechTranscript(segment?.spoken || '');
+  if (/\btransponder\b/.test(normative) || /\btransponder\b/.test(spoken)) return 'transponder';
+  if (/\bqnh\b/.test(normative) || /\bq\s*n\s*helge\b/.test(spoken)) return 'qnh';
+  if (/\bbana\b/.test(normative) || /\bbana\b/.test(spoken)) return 'runway';
+  if (/\b(kontakta|frekvens|mhz)\b/.test(normative) || /\bkomma\b/.test(spoken)) return 'frequency';
+  if (/\bse[- ]?[a-zåäö]{3}\b/i.test(normative) || /^sigurd\s+erik\b/.test(spoken)) return 'callsign';
+  return 'generic';
+}
+
+function rtAwareCanonicalTokens(value, segmentKind) {
+  return canonicalSpeechTokens(normalizeRtVerifierText(value, { segmentKind }));
+}
+
+function transcriptMatchesScriptRtAware(transcript, script, segment) {
+  const segmentKind = inferRtSegmentKind(segment);
+  const a = rtAwareCanonicalTokens(transcript, segmentKind);
+  const b = rtAwareCanonicalTokens(script, segmentKind);
+  if (!a.length || !b.length) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function verificationVocabularyHint(segment) {
+  const kind = inferRtSegmentKind(segment);
+  const alphabet = 'Adam, Bertil, Cesar, David, Erik, Filip, Gustav, Helge, Ivar, Johan, Kalle, Ludvig, Martin, Niklas, Olof, Petter, Qvintus, Rudolf, Sigurd, Tore, Urban, Viktor, Wilhelm, Xerxes, Yngve, Zäta, Åke, Ärlig, Östen';
+  switch (kind) {
+    case 'callsign':
+      return `Frastyp: svensk anropssignal bokstaverad med svenska bokstaveringsalfabetet. Tillåtna vokabulärord: ${alphabet}.`;
+    case 'qnh':
+      return 'Frastyp: QNH. I svensk radiotelefoni kan etiketten uttalas som bokstäverna Q N följt av Helge. Därefter kommer en sifferföljd. Återge exakt vad som hörs; byt aldrig K mot Q om ljudet faktiskt säger K.';
+    case 'transponder':
+      return 'Frastyp: transponderkod. Ordet transponder följs av fyra siffror eller svenska sifferord. Återge varje siffra exakt.';
+    case 'runway':
+      return 'Frastyp: bana. Ordet bana följs av två siffror eller svenska sifferord. Återge exakt vad som hörs.';
+    case 'frequency':
+      return 'Frastyp: radiofrekvens. Svenska sifferord kan förekomma och decimalmarkören kan uttalas komma. Återge exakt vad som hörs.';
+    default:
+      return `Svensk flygradiotelefoni. Vanliga svenska bokstaveringsord är: ${alphabet}.`;
+  }
+}
+
 function transcriptFromCompletedResponse(response) {
   const parts = [];
   for (const item of response?.output || []) {
@@ -178,7 +263,7 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 
   // Deliberately preserve the complete tail. Short final words such as
   // "ett" can have low-energy endings and must never be clipped by the
-  // segment joiner. v0.6.5 preserves the complete tail and adds independent audio verification for
+  // segment joiner. v0.6.6 preserves the complete tail and adds independent audio verification for
   // content integrity.
   return pcm.subarray(first * 2);
 }
@@ -198,16 +283,16 @@ async function transcribeGeneratedSegmentAudio(pcm, segment, attempt) {
   const wav = pcm16ToWav(pcm, 24000, 1);
   const audio = await toFile(wav, `rt-segment-${segment.index + 1}-attempt-${attempt}.wav`, { type: 'audio/wav' });
   const prompt = [
-    'Detta är en kort svensk flygradiofras. Transkribera exakt vad som faktiskt hörs.',
-    'Rätta inte mot ett förväntat facit och lägg inte till saknade ord.',
-    'Skriv svenska bokstaveringsord som de hörs.',
-    'Om bokstäverna Q och N uttalas före Helge, skriv "Q N Helge". Om andra bokstäver hörs, skriv dem som de hörs.',
-    'Sifferord ska återges som tal eller ord utan att rättas.',
-    `Förväntad frastyp för vokabulärstöd, inte facit: ${segment.normative}`,
+    'Detta är en mycket kort svensk flygradiofras. Transkribera exakt vad som faktiskt hörs.',
+    'Du är en oberoende observatör. Du får INTE något facit för anropssignal, bana, QNH, transponderkod eller frekvens.',
+    'Rätta inte ett otydligt eller felaktigt uttal mot vad du tror att flygradio normalt borde innehålla.',
+    'Lägg inte till saknade ord eller siffror.',
+    'Skriv svenska bokstaveringsord som de faktiskt hörs. Bevara sifferföljden exakt.',
+    verificationVocabularyHint(segment),
   ].join('\n');
   const transcription = await client.audio.transcriptions.create({
     file: audio,
-    model: process.env.OPENAI_SPEECH_VERIFY_MODEL || process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',
+    model: process.env.OPENAI_SPEECH_VERIFY_MODEL || 'gpt-transcribe',
     language: 'sv',
     prompt,
     temperature: 0,
@@ -323,7 +408,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.5-verified-segmented-speech',
+              purpose: 'rt-trainer-v0.6.6-rt-aware-verification',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -371,7 +456,7 @@ async function generateGuardedRealtimeSegment(args) {
     try {
       const generated = await generateRealtimeSegment({ ...args, attempt });
       const verificationTranscript = await transcribeGeneratedSegmentAudio(generated.pcm, args.segment, attempt);
-      const verified = transcriptMatchesScript(verificationTranscript, args.segment.spoken);
+      const verified = transcriptMatchesScriptRtAware(verificationTranscript, args.segment.spoken, args.segment);
 
       console.info('Realtime segment diagnostic', {
         segment: args.segment.index + 1,
@@ -379,6 +464,7 @@ async function generateGuardedRealtimeSegment(args) {
         attempt,
         expected: args.segment.spoken,
         normative: args.segment.normative,
+        segmentKind: inferRtSegmentKind(args.segment),
         realtimeTranscript: generated.transcript,
         verificationTranscript,
         rawDurationMs: generated.rawDurationMs,
@@ -453,7 +539,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.5', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.6', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
