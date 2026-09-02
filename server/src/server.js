@@ -263,7 +263,7 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 
   // Deliberately preserve the complete tail. Short final words such as
   // "ett" can have low-energy endings and must never be clipped by the
-  // segment joiner. v0.6.6 preserves the complete tail and adds independent audio verification for
+  // segment joiner. v0.6.7 preserves the complete tail and adds independent audio verification for
   // content integrity.
   return pcm.subarray(first * 2);
 }
@@ -408,7 +408,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.6-rt-aware-verification',
+              purpose: 'rt-trainer-v0.6.7-resilient-hybrid-speech',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -494,6 +494,45 @@ async function generateGuardedRealtimeSegment(args) {
   throw lastError || new Error('Realtime speech segment generation failed.');
 }
 
+async function generateDeterministicTtsPcm(spokenScript, { reason = 'fallback' } = {}) {
+  if (!client) throw new Error('OpenAI API is not configured.');
+  console.warn('Using deterministic TTS speech fallback', { reason, spokenScript });
+  const speech = await client.audio.speech.create({
+    model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+    voice: process.env.OPENAI_TTS_VOICE || 'cedar',
+    input: spokenScript,
+    speed: Number(process.env.OPENAI_TTS_SPEED || '1.06'),
+    instructions: [
+      'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
+      'Läs EXAKT manuset. Lägg inte till, ta bort eller korrigera någon information.',
+      'Svenska bokstaveringsord och sifferord ska uttalas precis som de står.',
+      'När texten innehåller Q N Helge: uttala Q som svenska bokstaven ku, N som svenska bokstaven enn, därefter Helge.',
+      'Behåll ett naturligt men kompakt radiotempo.',
+    ].join(' '),
+    response_format: 'pcm',
+  });
+  const pcm = Buffer.from(await speech.arrayBuffer());
+  if (!pcm.length) throw new Error('TTS fallback returned no audio.');
+  return pcm;
+}
+
+async function generateResilientSpeech(normativeText, spokenScript) {
+  try {
+    const wav = await generateSegmentedRealtimeSpeech(normativeText, spokenScript);
+    return { wav, engine: 'realtime', fallback: false };
+  } catch (realtimeError) {
+    console.error('Realtime verified speech failed; falling back to deterministic TTS', {
+      message: String(realtimeError?.message || realtimeError),
+      normativeText,
+      spokenScript,
+    });
+    const pcm = await generateDeterministicTtsPcm(spokenScript, {
+      reason: String(realtimeError?.message || realtimeError),
+    });
+    return { wav: pcm16ToWav(pcm, 24000, 1), engine: 'tts-fallback', fallback: true };
+  }
+}
+
 async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
   const segments = splitRtSpeechSegments(normativeText, spokenScript);
   if (!segments.length) throw new Error('No RT speech segments were produced.');
@@ -539,7 +578,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.6', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.7', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -597,11 +636,12 @@ app.post('/api/speech', async (req, res) => {
   try {
     if (engine === 'realtime') {
       if (!spokenText) return res.status(400).json({ error: 'Exact spoken RT script missing.' });
-      const wav = await generateSegmentedRealtimeSpeech(text, spokenText);
+      const result = await generateResilientSpeech(text, spokenText);
       res.setHeader('Content-Type', 'audio/wav');
       res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-RT-Speech-Engine', 'realtime');
-      return res.send(wav);
+      res.setHeader('X-RT-Speech-Engine', result.engine);
+      res.setHeader('X-RT-Speech-Fallback', result.fallback ? '1' : '0');
+      return res.send(result.wav);
     }
 
     // v0.5.5 baseline kept deliberately for A/B comparison.

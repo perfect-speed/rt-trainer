@@ -1,6 +1,6 @@
-# RT Trainer v0.6.6 – RT-aware audio verification
+# RT Trainer v0.6.7 – Resilient hybrid speech
 
-v0.6.6 keeps the segmented Realtime speech architecture from v0.6.5, but
+v0.6.7 keeps the segmented Realtime speech architecture from v0.6.5, but
 changes the independent audio verifier. The verifier is now domain-aware
 without receiving the expected callsign, runway, QNH, transponder code or
 frequency as transcription hints.

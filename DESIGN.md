@@ -1,4 +1,4 @@
-# RT Trainer v0.6.6 – RT-aware audio verification
+# RT Trainer v0.6.7 – Resilient hybrid speech
 
 ## Design goal
 
@@ -7,7 +7,7 @@ of Swedish radiotelephony vocabulary without leaking the answer into ASR.
 
 > Scenario/world state owns reality. Generative AI owns expression.
 
-## Why v0.6.6 exists
+## Why v0.6.7 exists
 
 v0.6.5 demonstrated a second-model problem: Realtime could report the correct
 spoken script while the independent ASR transcribed `Sigurd` as `Sigrid`,
