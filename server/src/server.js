@@ -75,6 +75,7 @@ function canonicalSpeechTokens(value) {
   const raw = normalizeSpeechTranscript(value)
     .replace(/q\s*n\s*h\b/g, 'qnh')
     .replace(/q\s*n\s*helge\b/g, 'qnh')
+    .replace(/\bku\s+en+n?\s+helge\b/g, 'qnh')
     // Realtime may transcribe a correctly spoken Swedish spelling sequence
     // back into compact registration notation. Canonicalize that notation
     // to the same form as explicit spelling words before content comparison.
@@ -162,20 +163,22 @@ function splitRtSpeechSegments(normativeText, spokenScript) {
   }));
 }
 
-function trimPcm16Silence(pcm, { threshold = 180, keepMs = 28, sampleRate = 24000 } = {}) {
+function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate = 24000 } = {}) {
   if (!Buffer.isBuffer(pcm) || pcm.length < 4) return pcm;
   const sampleCount = Math.floor(pcm.length / 2);
   let first = 0;
-  let last = sampleCount - 1;
 
   while (first < sampleCount && Math.abs(pcm.readInt16LE(first * 2)) < threshold) first += 1;
-  while (last > first && Math.abs(pcm.readInt16LE(last * 2)) < threshold) last -= 1;
-
   if (first >= sampleCount) return pcm;
+
   const keepSamples = Math.round(sampleRate * keepMs / 1000);
   first = Math.max(0, first - keepSamples);
-  last = Math.min(sampleCount - 1, last + keepSamples);
-  return pcm.subarray(first * 2, (last + 1) * 2);
+
+  // Deliberately preserve the complete tail. Short final words such as
+  // "ett" can have low-energy endings and must never be clipped by the
+  // segment joiner. v0.6.4 trades a little extra inter-segment silence for
+  // content integrity.
+  return pcm.subarray(first * 2);
 }
 
 function pcmSilence(durationMs, sampleRate = 24000) {
@@ -218,7 +221,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
       settled = true;
       try { ws.close(); } catch (_) {}
       resolve({
-        pcm: trimPcm16Silence(Buffer.concat(chunks)),
+        pcm: trimPcm16LeadingSilence(Buffer.concat(chunks)),
         transcript,
       });
     };
@@ -259,7 +262,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               'Det operativa innehållet är låst av träningssystemet.',
               'Tala naturlig svensk VHF-radiotelefoni: professionellt, kort, rytmiskt och sammanhållet.',
               'Gruppen ska låta som en del av ett sammanhängande ATC-meddelande, inte som en fristående uppläsning.',
-              'Bokstaveringsord uttalas sammanhängande som svensk flygradio. Q N Helge uttalas naturligt på svenska.',
+              'Bokstaveringsord uttalas sammanhängande som svensk flygradio. Textformen ku enn Helge är ett uttalsmanus och ska låta exakt som svensk flygradio Q N Helge, inte som engelska ord.',
               'Sifferorden och övriga ord ska uttalas exakt som de står.',
             ].join(' '),
           },
@@ -287,7 +290,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.3-segmented-controlled-speech',
+              purpose: 'rt-trainer-v0.6.4-stabilized-segmented-speech',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -355,7 +358,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
   const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '65');
 
   // Generate sequentially on purpose. Besides keeping API pressure low, this
-  // makes logs easy to interpret during the v0.6.3 architecture experiment.
+  // makes logs easy to interpret during the segmented-speech architecture experiment.
   for (const segment of segments) {
     const result = await generateGuardedRealtimeSegment({
       fullNormativeText: normativeText,
@@ -380,7 +383,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.3', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.4', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {

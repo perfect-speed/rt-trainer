@@ -31,6 +31,11 @@ class SpokenRtNormalizer {
     text = _normalizeExpectedCallsign(text, expected.callsign,
         allowAbbreviated: expected.allowAbbreviatedCallsign);
 
+    // ASR often hears the Swedish RT expression "Q N Helge" as forms
+    // such as "Tune Helge". Normalize only the QNH label here; the
+    // pressure digits are still taken strictly from what the learner said.
+    text = _normalizeQnhLabel(text);
+
     text = _normalizeFrequency(text);
     text = _normalizeFrequencyWithoutSeparator(text, expected.frequency);
     text = _normalizeDigitSequenceAfter(text, RegExp(r'\b(?:runway|rwy|bana)\s+'), maxDigits: 2);
@@ -45,6 +50,19 @@ class SpokenRtNormalizer {
     );
 
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+
+  String _normalizeQnhLabel(String input) {
+    return input
+        .replaceAll(
+          RegExp(r'\b(?:q\s*n|ku\s+en+n?|tune|tun)\s+helge\b', caseSensitive: false),
+          'qnh',
+        )
+        .replaceAll(
+          RegExp(r'\bqnh\s+helge\b', caseSensitive: false),
+          'qnh',
+        );
   }
 
   String _normalizeExpectedCallsign(String input, String callsign,

@@ -12,6 +12,25 @@ void main() {
   final normalizer = SpokenRtNormalizer();
   final assessor = AsrQualityAssessor();
 
+  test('normalises ASR Tune Helge as QNH label without changing value', () {
+    final normalized = normalizer.normalize(
+      'Tune Helge 1018, transponder 4261, Sigurd Erik Gustav Ludvig Adam.',
+      expected,
+    );
+    expect(normalized, contains('qnh 1018'));
+    expect(normalized, contains('transponder 4261'));
+    expect(normalized, contains('SE-GLA'));
+  });
+
+  test('does not repair a wrong pressure value when Tune Helge is normalised', () {
+    final normalized = normalizer.normalize(
+      'Tune Helge 1017, transponder 4261, Sigurd Erik Gustav Ludvig Adam.',
+      expected,
+    );
+    expect(normalized, contains('qnh 1017'));
+    expect(normalized, isNot(contains('qnh 1018')));
+  });
+
   test('normalises correct Swedish spelling alphabet for SE-GLA', () {
     final normalized = normalizer.normalize(
       'QNH 1018, transponder 4261, Sigurd Erik Gustav Ludvig Adam.',
