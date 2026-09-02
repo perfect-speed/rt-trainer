@@ -186,12 +186,13 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.6 changes the speech architecture. Realtime receives the normative
-    // ATC text directly and is responsible for natural Swedish RT realization.
-    // The v0.5.5 TTS baseline still uses the deterministic pronunciation script.
+    // v0.6.1 keeps the Realtime model for natural prosody, but no longer
+    // lets it choose the words. The scenario remains normative truth and the
+    // deterministic formatter supplies the exact spoken RT script.
+    final spokenScript = _speechFormatter.format(_step.atcTransmission);
     final speechText = _speechEngine == SpeechEngine.realtime
         ? _step.atcTransmission
-        : _speechFormatter.format(_step.atcTransmission);
+        : spokenScript;
     setState(() {
       _isSpeakingAtc = true;
       _speechError = null;
@@ -199,6 +200,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
     try {
       final bytes = await _api.synthesizeSpeech(
         text: speechText,
+        spokenText: _speechEngine == SpeechEngine.realtime ? spokenScript : null,
         engine: _speechEngine == SpeechEngine.realtime ? 'realtime' : 'tts',
       );
       await _audioPlayer.stop();

@@ -49,12 +49,28 @@ function pcm16ToWav(pcm, sampleRate = 24000, channels = 1) {
   return Buffer.concat([header, pcm]);
 }
 
-function generateRealtimeSpeech(text) {
+function normalizeSpeechTranscript(value) {
+  return String(value || '')
+    .toLocaleLowerCase('sv-SE')
+    .replace(/[.,;:!?()\[\]"']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function transcriptMatchesScript(transcript, script) {
+  const a = normalizeSpeechTranscript(transcript);
+  const b = normalizeSpeechTranscript(script);
+  if (!a || !b) return false;
+  return a === b;
+}
+
+function generateRealtimeSpeech(normativeText, spokenScript, attempt = 1) {
   return new Promise((resolve, reject) => {
     const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-1.5';
     const voice = process.env.OPENAI_REALTIME_VOICE || 'marin';
     const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
     const chunks = [];
+    let transcript = '';
     let requestSent = false;
     let settled = false;
 
@@ -68,6 +84,15 @@ function generateRealtimeSpeech(text) {
     const finish = () => {
       if (settled) return;
       if (!chunks.length) return fail(new Error('Realtime returned no audio.'));
+      if (!transcriptMatchesScript(transcript, spokenScript)) {
+        console.warn('Realtime speech guard rejected output', {
+          attempt,
+          expected: spokenScript,
+          transcript,
+          normativeText,
+        });
+        return fail(new Error('Realtime speech content guard rejected generated wording.'));
+      }
       settled = true;
       try { ws.close(); } catch (_) {}
       resolve(pcm16ToWav(Buffer.concat(chunks), 24000, 1));
@@ -103,15 +128,13 @@ function generateRealtimeSpeech(text) {
               },
             },
             instructions: [
-              'Du är en erfaren svensk flygledare och talar naturlig svensk VHF-radiotelefoni.',
-              'Det ska låta som verklig ATC, inte som uppläst text eller talsyntes.',
-              'Var professionell, kort och naturligt rytmisk. Gruppera information som en flygledare gör.',
-              'Anropssignal är en sammanhållen identitetsgrupp. QNH med värde är en sammanhållen grupp. Transponder och frekvens är egna grupper.',
-              'Använd svenska bokstaveringsalfabetet för registreringar: S Sigurd, E Erik, A Adam, B Bertil, C Cesar, D David, F Filip, G Gustav, H Helge, I Ivar, J Johan, K Kalle, L Ludvig, M Martin, N Niklas, O Olof, P Petter, Q Qvintus, R Rudolf, T Tore, U Urban, V Viktor, W Wilhelm, X Xerxes, Y Yngve, Z Zäta.',
-              'QNH uttalas i svensk flygradio som Q N Helge, med svensk bokstavsrytm, följt direkt av värdet.',
-              'Siffror i bana, QNH, transponder och frekvens uttalas siffra för siffra. Använd i denna grundträning tydliga svenska former: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia.',
-              'Frekvensens decimalpunkt uttalas komma.',
-              'Ändra aldrig ett operativt värde och lägg aldrig till information som inte finns i meddelandet.',
+              'Du är rösten för svensk flygtrafikledning i en PPL-tränare.',
+              'Din enda uppgift är att tala det exakta manus du får. Du får aldrig formulera om, komplettera, förklara eller fortsätta efter manuset.',
+              'Det operativa innehållet är låst av träningssystemet. Lägg aldrig till bana, QNH, transponderkod, frekvens, klarering, trafikuppgift eller annan information.',
+              'Tala naturlig svensk VHF-radiotelefoni: professionellt, kort, sammanhållet och med realistisk prosodi.',
+              'Bokstaveringsorden i manuset ska uttalas som sammanhängande svensk flygradio, inte som en lista med isolerade ord.',
+              'Q N Helge ska uttalas naturligt på svenska, som i svensk flygradiotelefoni.',
+              'Sifferorden och övriga ord ska uttalas exakt som de står i manuset.',
             ].join(' '),
           },
         }));
@@ -126,13 +149,15 @@ function generateRealtimeSpeech(text) {
             conversation: 'none',
             input: [],
             output_modalities: ['audio'],
+            max_output_tokens: 160,
             instructions: [
-              'Sänd exakt följande operativa ATC-meddelande på svenska.',
-              'Behåll exakt anropssignal, bana, QNH, transponder, frekvens och övrig innebörd.',
-              'Omsätt notation till naturligt svenskt radiotal enligt sessionens regler; lägg inte till någon inledning eller avslutning.',
-              `MEDDELANDE: ${text}`,
+              'LÄS MANUSET ORDAgrant OCH ENDAST MANUSET.',
+              'Ingen inledning. Ingen avslutning. Inga extra ord. Ingen omskrivning.',
+              'Behåll exakt ordningsföljd och samtliga ord, men använd naturlig svensk ATC-prosodi.',
+              `NORMATIV KONTEXT (får inte ändras eller kompletteras): ${normativeText}`,
+              `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.6' },
+            metadata: { purpose: 'rt-trainer-v0.6.1-locked-speech' },
           },
         }));
         return;
@@ -140,6 +165,16 @@ function generateRealtimeSpeech(text) {
 
       if (event.type === 'response.output_audio.delta' && typeof event.delta === 'string') {
         chunks.push(Buffer.from(event.delta, 'base64'));
+        return;
+      }
+
+      if (event.type === 'response.output_audio_transcript.delta' && typeof event.delta === 'string') {
+        transcript += event.delta;
+        return;
+      }
+
+      if (event.type === 'response.output_audio_transcript.done' && typeof event.transcript === 'string') {
+        transcript = event.transcript;
         return;
       }
 
@@ -159,9 +194,22 @@ function generateRealtimeSpeech(text) {
   });
 }
 
+async function generateGuardedRealtimeSpeech(normativeText, spokenScript) {
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await generateRealtimeSpeech(normativeText, spokenScript, attempt);
+    } catch (error) {
+      lastError = error;
+      if (!String(error?.message || error).includes('content guard')) throw error;
+    }
+  }
+  throw lastError || new Error('Realtime speech generation failed.');
+}
+
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.0', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.1', speechDefault: 'realtime' });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -211,13 +259,15 @@ app.post('/api/speech', async (req, res) => {
 
   const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
   const engine = req.body?.engine === 'tts' ? 'tts' : 'realtime';
+  const spokenText = typeof req.body?.spokenText === 'string' ? req.body.spokenText.trim().slice(0, 800) : '';
   if (!text) {
     return res.status(400).json({ error: 'Speech text missing.' });
   }
 
   try {
     if (engine === 'realtime') {
-      const wav = await generateRealtimeSpeech(text);
+      if (!spokenText) return res.status(400).json({ error: 'Exact spoken RT script missing.' });
+      const wav = await generateGuardedRealtimeSpeech(text, spokenText);
       res.setHeader('Content-Type', 'audio/wav');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-RT-Speech-Engine', 'realtime');

@@ -7,14 +7,14 @@ void main() {
   test('formats full callsign runway QNH and transponder deterministically', () {
     expect(
       formatter.format('SE-KQX, bana 01, QNH 1016, transponder 4255.'),
-      'Sigurd Erik Kalle Qvintus Xerxes, bana nolla ett, ku en Helge ett nolla ett sexa, transponder fyra tvåa femma femma.',
+      'Sigurd Erik Kalle Qvintus Xerxes, bana nolla ett, Q N Helge ett nolla ett sexa, transponder fyra tvåa femma femma.',
     );
   });
 
   test('formats runway 19 and QNH 1009 using clarified Swedish digit words', () {
     expect(
       formatter.format('SE-VPT, bana 19, QNH 1009.'),
-      'Sigurd Erik Viktor Petter Tore, bana ett nia, ku en Helge ett nolla nolla nia.',
+      'Sigurd Erik Viktor Petter Tore, bana ett nia, Q N Helge ett nolla nolla nia.',
     );
   });
 
@@ -33,6 +33,6 @@ void main() {
   });
 
   test('never leaves literal QNH for generic TTS pronunciation', () {
-    expect(formatter.format('QNH'), 'ku en Helge');
+    expect(formatter.format('QNH'), 'Q N Helge');
   });
 }
