@@ -88,4 +88,32 @@ void main() {
     expect(normalized, endsWith('SE-RYD.'));
   });
 
+  test('normalises spoken frequency without decimal separator', () {
+    const mbn = ExpectedReadback(
+      callsign: 'SE-MBN',
+      frequency: '124.725',
+    );
+    final normalized = normalizer.normalize(
+      'Ett två fyra sju två fem Sigurd Erik Martin Bertil Niklas.',
+      mbn,
+    );
+    expect(normalized, contains('124.725'));
+    expect(normalized, contains('SE-MBN'));
+  });
+
+  test('exact Swedish spelling of expected callsign is not marked ASR uncertain', () {
+    const mbn = ExpectedReadback(
+      callsign: 'SE-MBN',
+      frequency: '124.725',
+    );
+    const raw = 'Ett två fyra komma sju två fem Sigurd Erik Martin Bertil Niklas.';
+    final normalized = normalizer.normalize(raw, mbn);
+    final result = assessor.assess(
+      rawTranscript: raw,
+      normalizedTranscript: normalized,
+      expected: mbn,
+    );
+    expect(result.callsignUncertain, isFalse);
+  });
+
 }

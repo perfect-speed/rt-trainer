@@ -38,7 +38,8 @@ class AsrQualityAssessor {
     required String normalizedTranscript,
     required ExpectedReadback expected,
   }) {
-    if (_containsRecognisedCallsign(normalizedTranscript, expected)) {
+    if (_containsRecognisedCallsign(normalizedTranscript, expected) ||
+        _rawContainsExpectedSwedishSpelling(rawTranscript, expected)) {
       return const AsrAssessment(callsignUncertain: false);
     }
 
@@ -74,6 +75,39 @@ class AsrQualityAssessor {
     }
 
     return const AsrAssessment(callsignUncertain: false);
+  }
+
+  bool _rawContainsExpectedSwedishSpelling(String raw, ExpectedReadback expected) {
+    final compact = expected.callsign.toUpperCase().replaceAll('-', '');
+    if (compact.length != 5 || !compact.startsWith('SE')) return false;
+
+    const canonical = <String, String>{
+      'S': 'sigurd', 'E': 'erik', 'M': 'martin', 'B': 'bertil', 'N': 'niklas',
+      'A': 'adam', 'C': 'cesar', 'D': 'david', 'F': 'filip', 'G': 'gustav',
+      'H': 'helge', 'I': 'ivar', 'J': 'johan', 'K': 'kalle', 'L': 'ludvig',
+      'O': 'olof', 'P': 'petter', 'Q': 'qvintus', 'R': 'rudolf', 'T': 'tore',
+      'U': 'urban', 'V': 'viktor', 'W': 'wilhelm', 'X': 'xerxes', 'Y': 'yngve',
+      'Z': 'zäta', 'Å': 'åke', 'Ä': 'ärlig', 'Ö': 'östen',
+    };
+
+    final expectedWords = compact.split('').map((c) => canonical[c]).whereType<String>().toList();
+    if (expectedWords.length != compact.length) return false;
+
+    final words = raw.toLowerCase()
+        .split(RegExp(r'[^a-zåäö]+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    for (var i = 0; i <= words.length - expectedWords.length; i++) {
+      var match = true;
+      for (var j = 0; j < expectedWords.length; j++) {
+        if (words[i + j] != expectedWords[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return true;
+    }
+    return false;
   }
 
   bool _containsRecognisedCallsign(

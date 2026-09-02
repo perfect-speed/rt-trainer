@@ -32,6 +32,7 @@ class SpokenRtNormalizer {
         allowAbbreviated: expected.allowAbbreviatedCallsign);
 
     text = _normalizeFrequency(text);
+    text = _normalizeFrequencyWithoutSeparator(text, expected.frequency);
     text = _normalizeDigitSequenceAfter(text, RegExp(r'\b(?:runway|rwy|bana)\s+'), maxDigits: 2);
     text = _normalizeDigitSequenceAfter(text, RegExp(r'\bqnh\s+'), maxDigits: 4);
     text = _normalizeDigitSequenceAfter(text, RegExp(r'\b(?:squawk|transponder|transponderkod)\s+'), maxDigits: 4);
@@ -80,6 +81,28 @@ class SpokenRtNormalizer {
       final right = _wordsToDigits(parts[1]);
       if (left.length < 3 || right.length < 2) return whole;
       return '$left.$right';
+    });
+  }
+
+  String _normalizeFrequencyWithoutSeparator(String input, String? expectedFrequency) {
+    if (expectedFrequency == null) return input;
+
+    // In real Swedish RT the decimal separator is often omitted in speech,
+    // e.g. "ett två fyra sju två fem" for 124.725. Recognise a six-digit
+    // spoken group in the aviation VHF range and insert the decimal point.
+    const digitWords = 'three|seven|eight|zero|four|five|nine|one|two|six|oh|nolla|tvåa|tvaa|trea|femma|sexa|nia|noll|ett|en|två|tva|tre|fyra|fem|sex|sju|åtta|atta|nio';
+    final atom = '(?:[0-9]|$digitWords)';
+    final pattern = RegExp(
+      r'\b(' + atom + r'(?:[\s-]+' + atom + r'){5})\b',
+      caseSensitive: false,
+    );
+
+    return input.replaceAllMapped(pattern, (m) {
+      final digits = _tokensToDigits(m.group(1)!);
+      if (digits.length != 6) return m.group(0)!;
+      final mhz = int.tryParse(digits.substring(0, 3));
+      if (mhz == null || mhz < 118 || mhz > 136) return m.group(0)!;
+      return '${digits.substring(0, 3)}.${digits.substring(3)}';
     });
   }
 

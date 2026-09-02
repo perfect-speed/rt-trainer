@@ -74,7 +74,7 @@ class SwedishRtSpeechFormatter {
 
     text = text.replaceAllMapped(
       RegExp(r'\bQNH\s+(\d{3,4})\b', caseSensitive: false),
-      (match) => 'ku en hå ${_spellDigits(match.group(1)!)}',
+      (match) => 'Q N Helge ${_spellDigits(match.group(1)!)}',
     );
 
     text = text.replaceAllMapped(
@@ -89,7 +89,7 @@ class SwedishRtSpeechFormatter {
 
     // If QNH appears without a value, still force the Swedish aviation
     // pronunciation rather than leaving the acronym to a generic TTS model.
-    text = text.replaceAll(RegExp(r'\bQNH\b', caseSensitive: false), 'ku en hå');
+    text = text.replaceAll(RegExp(r'\bQNH\b', caseSensitive: false), 'Q N Helge');
 
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }

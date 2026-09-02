@@ -1,4 +1,4 @@
-# RT Trainer – design principles (v0.5.2)
+# RT Trainer – design principles (v0.5.3)
 
 ## Governing principle
 

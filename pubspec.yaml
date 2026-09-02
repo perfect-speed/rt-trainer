@@ -1,7 +1,7 @@
 name: rt_trainer
 description: Constraint-based radiotelephony trainer for Swedish PPL training.
 publish_to: 'none'
-version: 0.5.2+1
+version: 0.5.3+1
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

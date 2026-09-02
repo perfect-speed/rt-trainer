@@ -1,9 +1,9 @@
-# RT Trainer v0.5.2 – Natural Swedish ATC foundation
+# RT Trainer v0.5.3 – Natural Swedish ATC foundation
 
 This version keeps the v0.5.1 mobile/PTT architecture and focuses on the ATC
 experience before adding more functionality.
 
-## Changes in v0.5.2
+## Changes in v0.5.3
 
 - Adds a deterministic Swedish RT speech formatter between scenario text and TTS.
 - `QNH` is now spoken as **ku en hå** rather than being left to generic acronym pronunciation.
@@ -35,7 +35,7 @@ first and wait until `rt-trainer-api` is Live.
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add .
-git commit -m "Publish RT Trainer v0.5.2 natural Swedish ATC"
+git commit -m "Publish RT Trainer v0.5.3 natural Swedish ATC"
 git push
 ```
 

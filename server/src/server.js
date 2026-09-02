@@ -85,7 +85,7 @@ app.post('/api/speech', async (req, res) => {
       model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
       voice: process.env.OPENAI_TTS_VOICE || 'alloy',
       input: text,
-      instructions: 'Tala som en lugn och trovärdig svensk flygledare i normal radiotrafik, inte som en uppläsare eller läroboksröst. Använd naturlig svensk prosodi, korta funktionella pauser och ett jämnt, professionellt radiotempo. Behåll exakt den information som står i manuset och lägg inte till, utelämna eller rätta något. Uttala svenska bokstaveringsord naturligt. Uttala ku en hå som svensk radiotelefoni, med hå i slutet. När sifferord anges ska de uttalas exakt som skrivna: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Siffergrupper ska vara tydliga men inte överartikulerade.',
+      instructions: 'Tala som en lugn och trovärdig svensk flygledare i normal radiotrafik, inte som en uppläsare eller läroboksröst. Använd naturlig svensk prosodi, korta funktionella pauser och ett jämnt, professionellt radiotempo. Behåll exakt den information som står i manuset och lägg inte till, utelämna eller rätta något. Uttala svenska bokstaveringsord naturligt. När manuset innehåller Q N Helge ska det uttalas som svensk flygradiotelefoni: bokstavsnamnet Q, bokstavsnamnet N och därefter Helge. Säg inte Q N H och säg inte ku en ha. När sifferord anges ska de uttalas exakt som skrivna: nolla, ett, tvåa, trea, fyra, femma, sexa, sju, åtta, nia. Siffergrupper ska vara tydliga men inte överartikulerade.',
       response_format: 'mp3',
     });
 
