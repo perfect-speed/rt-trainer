@@ -1,4 +1,4 @@
-# RT Trainer v0.6.9 – web deployment
+# RT Trainer v0.6.10 – web deployment
 
 ## 1. Test Flutter source
 
@@ -10,12 +10,11 @@ flutter test
 
 ```powershell
 git add .
-git commit -m "Segment realtime ATC speech for content control"
+git commit -m "Add backend warmup and speech latency diagnostics"
 git push
 ```
 
-Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports
-`version: 0.6.9`.
+Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports `version: 0.6.10`.
 
 ## 3. Verify locally against Render
 
@@ -23,18 +22,14 @@ Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-Test **RÖST · REALTIME** first. Evaluate separately:
+For the latency test, let Render become idle before one trial if possible. Open the welcome screen and note whether it shows `Röstserver klar.` before pressing **STARTA DEMO**. Then compare:
 
-- all mandatory groups are actually spoken;
-- Swedish callsign spelling remains correct;
-- no extra operational information is introduced;
-- rhythm inside each group;
-- pauses/seams between groups;
-- delay before playback starts.
+- time from STARTA DEMO to first SE-KQX audio;
+- subsequent case latency;
+- SE-GLA and SE-RYD callsign rhythm;
+- immediate/identical `LYSSNA IGEN` replay.
 
-The backend log should show `Realtime RT-aware audio verification accepted` for successful
-transmissions. A rejected individual group is logged as
-`Realtime segment guard rejected output`.
+In Render logs inspect `Warm-up ping`, `Speech request received`, `Realtime segment diagnostic`, and `Speech request timing`.
 
 ## 4. Build GitHub Pages after local verification
 
@@ -42,7 +37,7 @@ transmissions. A rejected individual group is logged as
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add docs
-git commit -m "Build RT Trainer v0.6.9 web"
+git commit -m "Build RT Trainer v0.6.10 web"
 git push
 ```
 

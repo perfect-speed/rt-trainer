@@ -10,6 +10,21 @@ class TrainerApi {
 
   bool get isConfigured => baseUrl.trim().isNotEmpty;
 
+
+  Future<void> warmUp() async {
+    if (!isConfigured) return;
+    final uri = Uri.parse('$baseUrl/api/warmup');
+    try {
+      final response = await http
+          .get(uri, headers: {'cache-control': 'no-cache'})
+          .timeout(const Duration(seconds: 75));
+      if (response.statusCode == 200) return;
+      throw StateError('Uppvärmning misslyckades (${response.statusCode}).');
+    } catch (error) {
+      throw StateError('Röstservern kunde inte värmas upp: $error');
+    }
+  }
+
   Future<String> transcribe({
     required Uint8List wavBytes,
     required String scenarioContext,

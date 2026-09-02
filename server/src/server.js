@@ -243,7 +243,9 @@ function segmentProsodyInstruction(segment) {
     case 'callsign':
       return [
         'Bokstaveringsorden ska komma i jämn, kompakt rytm som en enda identitetsgrupp.',
+        'Gör INGEN extra paus mellan de två första orden Sigurd Erik och registreringens tre sista bokstaveringsord. Ett svenskt SE-anropssignal ska låta som en enda femordsgrupp.',
         'Dra inte ut eller pedagogiskt betona något enskilt bokstaveringsord; detta gäller särskilt ord som Martin.',
+        'Undvik en rytm som låter som S E ... G L A eller S E ... R Y D. Håll samma korta ordmellanrum genom hela anropssignalen.',
         'Avsluta sista bokstaveringsordet helt och lämna därefter en mycket kort naturlig radiopaus.',
       ].join(' ');
     case 'qnh':
@@ -343,7 +345,7 @@ function trimPcm16LeadingSilence(pcm, { threshold = 180, keepMs = 28, sampleRate
 
   // Deliberately preserve the complete tail. Short final words such as
   // "ett" can have low-energy endings and must never be clipped by the
-  // segment joiner. v0.6.9 preserves the complete tail and adds endpoint diagnostics plus independent audio verification for
+  // segment joiner. v0.6.10 preserves the complete tail and adds endpoint diagnostics plus independent audio verification for
   // content integrity.
   return pcm.subarray(first * 2);
 }
@@ -490,7 +492,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.6.9-stable-voice-cache',
+              purpose: 'rt-trainer-v0.6.10-warmup-latency',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -532,12 +534,17 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
 }
 
 async function generateGuardedRealtimeSegment(args) {
+  const segmentStartedAt = Date.now();
   let lastError;
   const maxAttempts = Number(process.env.OPENAI_REALTIME_SEGMENT_ATTEMPTS || '3');
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
+      const generationStartedAt = Date.now();
       const generated = await generateRealtimeSegment({ ...args, attempt });
+      const generationMs = Date.now() - generationStartedAt;
+      const verificationStartedAt = Date.now();
       const verificationTranscript = await transcribeGeneratedSegmentAudio(generated.pcm, args.segment, attempt);
+      const verificationMs = Date.now() - verificationStartedAt;
       const verified = transcriptMatchesScriptRtAware(verificationTranscript, args.segment.spoken, args.segment);
       const tail = pcmHasSafeNaturalTail(generated.pcm);
 
@@ -556,6 +563,9 @@ async function generateGuardedRealtimeSegment(args) {
         tailPeak: tail.peak,
         safeTail: tail.safe,
         verified,
+        generationMs,
+        verificationMs,
+        elapsedMs: Date.now() - segmentStartedAt,
       });
 
       if (!verified) {
@@ -645,6 +655,7 @@ async function generateResilientSpeech(normativeText, spokenScript) {
 }
 
 async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
+  const speechStartedAt = Date.now();
   const segments = splitRtSpeechSegments(normativeText, spokenScript);
   if (!segments.length) throw new Error('No RT speech segments were produced.');
 
@@ -660,7 +671,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
   const joinSilenceMs = Number(process.env.OPENAI_REALTIME_SEGMENT_GAP_MS || '30');
   const tailPaddingMs = Number(process.env.OPENAI_REALTIME_TAIL_PADDING_MS || '120');
 
-  // v0.6.9: segments are semantically independent, so generate/verify them
+  // v0.6.10: segments are semantically independent, so generate/verify them
   // concurrently. Preserve their deterministic order only when joining PCM.
   // This changes latency from roughly the sum of all segment round trips toward
   // the duration of the slowest segment (plus any retry).
@@ -692,6 +703,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
     durationsMs,
     joinSilenceMs,
     tailPaddingMs,
+    totalMs: Date.now() - speechStartedAt,
   });
 
   return pcm16ToWav(Buffer.concat(pcmParts), 24000, 1);
@@ -699,7 +711,19 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.9', speechDefault: 'realtime' });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.6.10', speechDefault: 'realtime', uptimeSeconds: Math.round(process.uptime()) });
+});
+
+// Lightweight warm-up endpoint. On Render Free this wakes the Node service
+// while the learner is still on the welcome screen, before the first ATC audio
+// is requested.
+app.get('/api/warmup', (_req, res) => {
+  console.info('Warm-up ping', {
+    uptimeSeconds: Math.round(process.uptime()),
+    cacheEntries: speechCache.size,
+  });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, version: '0.6.10', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -743,6 +767,12 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 });
 
 app.post('/api/speech', async (req, res) => {
+  const requestStartedAt = Date.now();
+  const requestId = Math.random().toString(36).slice(2, 9);
+  console.info('Speech request received', {
+    requestId,
+    uptimeSeconds: Math.round(process.uptime()),
+  });
   if (!client) {
     return res.status(503).json({ error: 'OpenAI API is not configured.' });
   }
@@ -758,6 +788,13 @@ app.post('/api/speech', async (req, res) => {
     const cacheKey = speechCacheKey(engine, text, spokenText);
     const cached = speechCache.get(cacheKey);
     if (cached) {
+      console.info('Speech request timing', {
+        requestId,
+        cache: 'HIT',
+        engine,
+        uptimeSeconds: Math.round(process.uptime()),
+        totalMs: Date.now() - requestStartedAt,
+      });
       res.setHeader('Content-Type', cached.contentType);
       res.setHeader('Cache-Control', 'private, max-age=3600');
       res.setHeader('X-RT-Speech-Engine', cached.engine);
@@ -779,6 +816,14 @@ app.post('/api/speech', async (req, res) => {
       res.setHeader('Cache-Control', 'private, max-age=3600');
       res.setHeader('X-RT-Speech-Engine', result.engine);
       res.setHeader('X-RT-Speech-Fallback', result.fallback ? '1' : '0');
+      console.info('Speech request timing', {
+        requestId,
+        cache: 'MISS',
+        engine: result.engine,
+        fallback: result.fallback,
+        uptimeSeconds: Math.round(process.uptime()),
+        totalMs: Date.now() - requestStartedAt,
+      });
       res.setHeader('X-RT-Speech-Cache', 'MISS');
       return res.send(result.wav);
     }
@@ -798,6 +843,14 @@ app.post('/api/speech', async (req, res) => {
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.setHeader('X-RT-Speech-Engine', 'tts');
+    console.info('Speech request timing', {
+      requestId,
+      cache: 'MISS',
+      engine: 'tts',
+      fallback: false,
+      uptimeSeconds: Math.round(process.uptime()),
+      totalMs: Date.now() - requestStartedAt,
+    });
     res.setHeader('X-RT-Speech-Cache', 'MISS');
     return res.send(buffer);
   } catch (error) {

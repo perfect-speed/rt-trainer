@@ -1,43 +1,14 @@
-# RT Trainer v0.6.9 – Prosodic stability
+# RT Trainer v0.6.10 – Warm start and latency diagnostics
 
-v0.6.9 keeps the v0.6.7 resilient hybrid speech architecture and stabilises
-segment endings and within-group rhythm. The goal is to retain the natural
-Realtime voice while reducing the intermittent half-spoken final digit/word
-heard in QNH and transponder groups, and reducing slow/over-emphasised spelling
-words such as `Martin`.
+v0.6.10 keeps the stable voice/cache/verification architecture from v0.6.9 and targets the remaining first-play delay plus callsign rhythm.
 
-Speech path:
+### Changes
 
-```text
-normative scenario
-  -> deterministic Swedish RT speech script
-  -> segmented Realtime generation
-  -> transcript + independent audio verification
-  -> acoustic tail check
-  -> retry if content/tail is unsafe
-  -> short deterministic tail padding
-  -> concatenated WAV
-  -> deterministic TTS fallback if Realtime cannot be accepted
-```
+- The welcome screen sends `/api/warmup` immediately, while the learner reads the instructions. On Render this wakes the Node service before the first ATC speech request.
+- `STARTA DEMO` waits for that same warm-up request if it is still in progress, and shows `STARTAR RÖSTSERVER…` rather than silently moving into a cold first exercise.
+- Backend speech logs now include request receipt, process uptime, cache hit/miss, total request time, and per-segment generation/verification time. A first request with very low `uptimeSeconds` is strong evidence of a Render cold start.
+- Existing client and server audio caches are unchanged: `LYSSNA IGEN` replays identical bytes immediately.
+- Callsign prosody is tightened so the five Swedish spelling words form one compact identity group, without an extra pause after `Sigurd Erik` in examples such as SE-GLA and SE-RYD.
+- No changes to deterministic scenario truth, readback validation, QNH/transponder verification, no-silence fallback, or speech segmentation.
 
-### v0.6.9 changes
-
-- Segment-specific prosody instructions:
-  - callsigns: even compact rhythm; no spelling word may be stretched;
-  - QNH: compact radio group, not slow dictation;
-  - transponder: four digits as one rhythmic group;
-  - runway/frequency: concise Swedish RT cadence.
-- Realtime is explicitly instructed to complete the last token and leave a
-  short acoustic pause before ending the segment.
-- A waveform endpoint guard logs RMS/peak energy in the final 55 ms and retries
-  a segment that still appears acoustically active at the buffer edge.
-- Accepted segments receive 120 ms deterministic tail padding. The extra join
-  gap is reduced to 30 ms, giving protection against clipped endings without a
-  large artificial pause between information groups.
-- The deterministic TTS fallback now retries once and appends a safe audio tail,
-  preserving the v0.6.7 rule that a speech-guard rejection must not by itself
-  result in silence.
-
-The operational content remains locked by the deterministic scenario and
-validator. Prosody may vary; runway, QNH, transponder, frequency and callsign
-content may not.
+The purpose of this version is diagnostic as well as practical: distinguish platform cold-start latency from normal speech-pipeline latency before optimising the verification architecture.

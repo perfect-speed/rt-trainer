@@ -1,9 +1,58 @@
 import 'package:flutter/material.dart';
+import '../services/trainer_api.dart';
 import '../theme/app_theme.dart';
 import 'trainer_screen.dart';
 
-class DemoWelcomeScreen extends StatelessWidget {
+class DemoWelcomeScreen extends StatefulWidget {
   const DemoWelcomeScreen({super.key});
+
+  @override
+  State<DemoWelcomeScreen> createState() => _DemoWelcomeScreenState();
+}
+
+class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
+  final TrainerApi _api = TrainerApi();
+  Future<void>? _warmupFuture;
+  bool _starting = false;
+  String? _warmupNote;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start warming Render immediately while the learner reads the welcome
+    // screen. The button later awaits the same Future rather than sending a
+    // second wake-up request.
+    if (_api.isConfigured) {
+      _warmupFuture = _api.warmUp();
+      _warmupFuture!.then((_) {
+        if (mounted) setState(() => _warmupNote = 'Röstserver klar.');
+      }).catchError((_) {
+        // Do not block the demo permanently. STARTA DEMO will still proceed and
+        // the normal speech request has its own transient-error retry handling.
+        if (mounted) setState(() => _warmupNote = 'Röstservern svarade inte ännu.');
+      });
+    }
+  }
+
+  Future<void> _startDemo() async {
+    if (_starting) return;
+    setState(() {
+      _starting = true;
+      _warmupNote ??= 'Startar röstserver…';
+    });
+
+    try {
+      final warmup = _warmupFuture;
+      if (warmup != null) await warmup;
+    } catch (_) {
+      // Continue. A failed warm-up should not make the trainer unusable.
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const TrainerScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +102,7 @@ class DemoWelcomeScreen extends StatelessWidget {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Demo v0.6.9 · svensk radiotelefoni', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('Demo v0.6.10 · svensk radiotelefoni', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),
@@ -93,20 +142,26 @@ class DemoWelcomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 22),
                     FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const TrainerScreen()),
-                        );
-                      },
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 14),
-                        child: Text('STARTA DEMO'),
+                      onPressed: _starting ? null : _startDemo,
+                      icon: _starting
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.play_arrow),
+                      label: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: Text(_starting ? 'STARTAR RÖSTSERVER…' : 'STARTA DEMO'),
                       ),
                     ),
+                    if (_warmupNote != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _warmupNote!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     const Text(
-                      'Mikrofonbehörighet behöver tillåtas i webbläsaren. Ingen API-nyckel ska finnas i själva webbappen.',
+                      'Röstservern värms i bakgrunden medan denna sida visas. Mikrofonbehörighet behöver tillåtas i webbläsaren. Ingen API-nyckel ska finnas i själva webbappen.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                     ),
