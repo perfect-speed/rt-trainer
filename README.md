@@ -1,17 +1,27 @@
-# RT Trainer v0.6.2 – Realtime voice prototype
+# RT Trainer v0.6.3 – Segmented controlled speech
 
-This iteration changes the ATC speech architecture. It keeps all existing readback validation and Swedish ASR behaviour, but adds a Realtime audio path intended to recover the natural radio feel observed in the earlier Kalmar–Jönköping conversational prototype.
+v0.6.3 is an architecture experiment. It keeps the deterministic scenario,
+validator and Swedish ASR from v0.6.2, but changes how the Realtime voice is
+generated.
 
-The default voice path uses OpenAI Realtime audio through the Node backend. The normative ATC text is passed directly to the Realtime model; the model may realize pronunciation and prosody but must not change any operational value. The previous v0.5.5 TTS path is retained as an A/B baseline and can be toggled in the radio panel.
-
-New backend environment variables:
+Instead of asking the model to reproduce a complete ATC transmission in one
+generation, the backend splits the already-fixed spoken script into
+information groups, for example:
 
 ```text
-OPENAI_REALTIME_MODEL=gpt-realtime-1.5
-OPENAI_REALTIME_VOICE=marin
+Sigurd Erik Kalle Qvintus Xerxes
+bana nolla ett
+Q N Helge ett nolla ett sexa
+transponder fyra tvåa femma femma
 ```
 
-Existing `OPENAI_API_KEY` is reused. No API key is exposed to Flutter or GitHub Pages.
+Each group is generated and content-checked separately. Only accepted groups
+are concatenated into the WAV returned to Flutter. The hypothesis is that a
+small generative task can preserve natural local prosody without letting the
+model omit or add operational information.
+
+The v0.5.5-style TTS path remains available as **RÖST · TTS BAS** for A/B
+comparison.
 
 ## First test after copying files
 
@@ -19,7 +29,8 @@ Existing `OPENAI_API_KEY` is reused. No API key is exposed to Flutter or GitHub 
 flutter test
 ```
 
-There are no new Flutter packages. The backend has one new Node dependency (`ws`), which Render installs automatically via `npm install` after push.
+There are no new Flutter packages. Render installs the existing Node backend
+dependencies automatically after push.
 
 For local Flutter testing against Render:
 
@@ -27,4 +38,7 @@ For local Flutter testing against Render:
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-Start with **RÖST · REALTIME**. Listen especially to SE-GLA, QNH 1018 and SE-RYD. Then toggle to **RÖST · TTS BAS** for an immediate baseline comparison.
+v0.6.3 may have noticeably longer first-audio latency because the groups are
+deliberately generated sequentially. For this iteration, evaluate three things
+separately: exact phraseology/content, naturalness inside each group, and the
+quality of the joins between groups.

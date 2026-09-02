@@ -1,68 +1,83 @@
-# RT Trainer v0.6.2 – Realtime voice architecture prototype
+# RT Trainer v0.6.3 – Segmented controlled speech
 
 ## Design principle
 
 **Stringens i reglerna – realism i uttrycket – progression i komplexiteten.**
 
-v0.5.x established a deterministic world state, deterministic readback validation, Swedish ASR normalization and a conventional text-to-speech layer. Repeated tuning improved pronunciation but produced diminishing returns in prosody.
+The scenario/world state owns operational truth. Generative audio is allowed to
+realize speech, but not to choose or alter runway, QNH, transponder, frequency,
+callsign or clearance content.
 
-v0.6.2 deliberately changes the speech architecture rather than adding more TTS exceptions.
+## Why v0.6.3
+
+v0.5.x gave high content control but limited naturalness. v0.6.0 showed that a
+Realtime audio model could sound substantially more natural, but it could also
+add information. v0.6.1–0.6.2 introduced an output-content guard; testing then
+showed the opposite failure mode: the model could omit a mandatory final group
+such as `transponder 4255`, and the guard correctly rejected the audio.
+
+The next hypothesis is therefore structural rather than prompt tuning:
+**reduce the generative task size.**
 
 ## Architecture
 
 ```text
 Scenario / world state
         |
-        | normative ATC text
         v
-Realtime speech realization
+Deterministic normative ATC text
         |
-        | generated audio only
         v
-Learner hears ATC
-
-Learner PTT -> ASR -> deterministic normalization -> deterministic validator
+Deterministic Swedish spoken script
+        |
+        v
+Deterministic segmentation
+  [callsign] [runway] [QNH] [transponder] ...
+        |
+        v
+Realtime realization + content guard PER SEGMENT
+        |
+        v
+Accepted PCM segments
+        |
+        v
+trim / short controlled join / concatenate
+        |
+        v
+one WAV to learner
 ```
 
-The scenario remains the source of operational truth. The Realtime model is not allowed to choose runway, QNH, squawk, frequency or callsign. It receives an already-fixed ATC transmission and is asked only to realize it as natural Swedish radio speech.
+The model receives the full transmission only as prosodic context. It is told
+to speak one exact current segment and never continue into the next segment.
+Each generated segment must pass the same canonical content comparison used by
+the speech guard. A failed segment is retried once; if it still fails, the
+whole speech request fails rather than presenting incorrect operational audio.
 
-## Why Realtime
+## Segmentation
 
-The previous chain was:
+Current micro-exercises already use comma-delimited information groups. v0.6.3
+preserves that deterministic grouping. A decimal comma without following
+whitespace is not treated as a group separator.
 
-`scenario -> phonetic rewrite -> generic TTS -> audio`
+Generated PCM has leading/trailing near-silence trimmed conservatively and a
+small configurable join gap is inserted between accepted groups. Default:
 
-This gave explicit pronunciation control, but callsigns and information groups often inherited uniform synthetic spacing. v0.6.2 instead sends the normative transmission directly to a Realtime audio model with domain instructions. The hypothesis is that a native audio model can preserve more natural rhythm and grouping than a TTS system reading a heavily phonetic script.
+```text
+OPENAI_REALTIME_SEGMENT_GAP_MS=65
+```
 
-## A/B baseline
+This is an experimental parameter, not a normative RT value.
 
-The v0.5.5 TTS path is intentionally retained. The UI has a compact switch between:
+## What v0.6.3 is intended to test
 
-- **RÖST · REALTIME** – v0.6.2 experimental speech path, default.
-- **RÖST · TTS BAS** – v0.5.5-style deterministic pronunciation + TTS baseline.
+The primary observations are:
 
-This is not intended as a learner-facing feature long term. It creates a controlled comparison during development and later supports formal expert rating.
+- Does every mandatory information group survive generation unchanged?
+- Does natural ATC-like prosody remain inside each short group?
+- Do independently generated groups create audible seams, tempo changes or
+  unnatural pauses when concatenated?
+- What latency penalty results from sequential generation?
 
-## Research implication
-
-The key research question is not whether a generative model can invent plausible ATC. It is whether a generative audio realization layer can increase perceptual realism while a deterministic scenario layer retains normative and operational control.
-
-Candidate comparison dimensions:
-
-- naturalness / ATC feel
-- prosodic grouping
-- intelligibility for novice learners
-- exact preservation of operational values
-- latency
-- consistency across callsigns and numeric groups
-
-v0.5.5 is frozen as the conventional TTS baseline for this comparison.
-
-## v0.6.2 — Locked wording, generative prosody
-
-Realtime no longer owns wording. The deterministic Swedish RT formatter produces an exact spoken script (for example Swedish spelling-alphabet words and `Q N Helge`). Realtime owns only prosody and voice realization.
-
-The backend also collects the model's output-audio transcript and rejects/retries a response if the spoken words differ from the exact script. This is a content guard against additions such as an unassigned transponder code. In research terms, v0.6.2 narrows generative freedom from **expression** to **prosodic realization**.
-
-## v0.6.2 speech guard correction
-v0.6.1 compared the Realtime output transcript to the deterministic spoken script as near-literal text. That was too brittle: a correct spoken transmission can be transcribed with compact letters/numbers or alternative orthography. v0.6.2 canonicalizes spelling words, digits and QNH before comparison and also reads the completed-response transcript if no transcript delta was received. Unexpected extra content still fails the guard; harmless transcription formatting no longer should.
+This version deliberately adds no new training content. v0.5.5 remains the
+conventional TTS baseline, while v0.6.0 remains an important reference for
+high naturalness with insufficient content control.

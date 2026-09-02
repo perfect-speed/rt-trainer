@@ -53,7 +53,7 @@ class DemoWelcomeScreen extends StatelessWidget {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Demo v0.5.4 · svensk radiotelefoni', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('Demo v0.6.3 · svensk radiotelefoni', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),

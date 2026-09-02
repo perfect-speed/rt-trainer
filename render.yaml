@@ -23,5 +23,7 @@ services:
         value: gpt-realtime-1.5
       - key: OPENAI_REALTIME_VOICE
         value: marin
+      - key: OPENAI_REALTIME_SEGMENT_GAP_MS
+        value: '65'
       - key: ALLOWED_ORIGIN
         value: https://perfect-speed.github.io,http://localhost:5000

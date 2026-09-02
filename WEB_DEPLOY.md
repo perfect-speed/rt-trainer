@@ -1,6 +1,6 @@
-# RT Trainer v0.5.5 – web deployment
+# RT Trainer v0.6.3 – web deployment
 
-## 1. Test source
+## 1. Test Flutter source
 
 ```powershell
 flutter test
@@ -10,12 +10,12 @@ flutter test
 
 ```powershell
 git add .
-git commit -m "Publish RT Trainer v0.5.5 ATC prosody"
+git commit -m "Segment realtime ATC speech for content control"
 git push
 ```
 
-Wait until Render `rt-trainer-api` is **Live**. The speech endpoint contains the
-new natural Swedish ATC instructions.
+Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports
+`version: 0.6.3`.
 
 ## 3. Verify locally against Render
 
@@ -23,19 +23,26 @@ new natural Swedish ATC instructions.
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-Check especially:
-- QNH is heard as **ku en hå**.
-- Swedish spelling alphabet sounds natural.
-- runway/QNH/transponder digits are clear but not over-articulated.
-- PTT/transcription and deterministic validation are unchanged.
+Test **RÖST · REALTIME** first. Evaluate separately:
 
-## 4. Build GitHub Pages
+- all mandatory groups are actually spoken;
+- Swedish callsign spelling remains correct;
+- no extra operational information is introduced;
+- rhythm inside each group;
+- pauses/seams between groups;
+- delay before playback starts.
+
+The backend log should show `Realtime segmented speech accepted` for successful
+transmissions. A rejected individual group is logged as
+`Realtime segment guard rejected output`.
+
+## 4. Build GitHub Pages after local verification
 
 ```powershell
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
 
 git add docs
-git commit -m "Build RT Trainer v0.5.5 web"
+git commit -m "Build RT Trainer v0.6.3 web"
 git push
 ```
 
