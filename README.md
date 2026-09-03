@@ -1,3 +1,7 @@
+# Testpilot-webbversion
+
+Den publika testpilotversionen använder avsiktligt den stabila OpenAI/v0.9.2-röstbaslinjen via v0.10-backenden. Azure Speech behövs inte för testpiloten. Syftet är att få spontan återkoppling på radiokänsla, tempo/flyt, taligenkänning och pedagogisk återkoppling innan nästa talsyntesexperiment införs.
+
 # RT Trainer v0.10.0
 
 v0.10.0 is a controlled **explicit prosodic boundary** experiment. The operational message model, deterministic Swedish phraseology, learner ASR/validation, and the v0.9 VHF radio DSP are frozen.

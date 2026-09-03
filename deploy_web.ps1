@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $backend = $BackendUrl.TrimEnd('/')
 
-Write-Host "Building RT Trainer web against $backend"
+Write-Host "Building RT Trainer TESTPILOT web against $backend"
 flutter pub get
 flutter test
 flutter build web --release --base-href "/$RepoName/" --dart-define="RT_API_URL=$backend"

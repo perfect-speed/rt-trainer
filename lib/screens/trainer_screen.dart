@@ -121,7 +121,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.azureProsodyRadio;
+  SpeechEngine _speechEngine = SpeechEngine.openAiBaselineRadio;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -597,32 +597,16 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   label: Text(_showAtcPromptText ? 'DÖLJ TEXT' : 'VISA TEXT'),
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
-                ChoiceChip(
-                  label: const Text('AZURE · 90 ms'),
-                  selected: _speechEngine == SpeechEngine.azureProsodyRadio,
-                  onSelected: _isSpeakingAtc ? null : (_) => setState(() {
-                    _speechEngine = SpeechEngine.azureProsodyRadio;
-                    _speechError = null;
-                  }),
-                  visualDensity: VisualDensity.compact,
-                ),
-                ChoiceChip(
-                  label: const Text('AZURE · PLAIN'),
-                  selected: _speechEngine == SpeechEngine.azurePlainRadio,
-                  onSelected: _isSpeakingAtc ? null : (_) => setState(() {
-                    _speechEngine = SpeechEngine.azurePlainRadio;
-                    _speechError = null;
-                  }),
-                  visualDensity: VisualDensity.compact,
-                ),
-                ChoiceChip(
-                  label: const Text('BASE · v0.9.2'),
-                  selected: _speechEngine == SpeechEngine.openAiBaselineRadio,
-                  onSelected: _isSpeakingAtc ? null : (_) => setState(() {
-                    _speechEngine = SpeechEngine.openAiBaselineRadio;
-                    _speechError = null;
-                  }),
-                  visualDensity: VisualDensity.compact,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: AppTheme.panelElevated,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'TESTPILOT · RADIO',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
                 ),
               ],
             ),
@@ -768,7 +752,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   border: Border.all(color: AppTheme.accent.withValues(alpha: .20)),
                 ),
                 child: const Text(
-                  'Som testpilot: notera gärna om taligenkänningen misstolkade något, om återkopplingen kändes rimlig och om någon radioreplik kändes onaturlig.',
+                  'Tack. Ge gärna en spontan återkoppling efteråt: Vad kändes mest realistiskt? Vad bröt illusionen? Var tempo och flyt rimligt? Missförstod taligenkänningen något? Var någon bedömning orimlig?',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textMuted, height: 1.35),
                 ),
@@ -893,7 +877,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.10.0' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · TESTPILOT' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),

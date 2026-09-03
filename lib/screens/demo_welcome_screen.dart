@@ -116,7 +116,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Syftet med demon är att prova om radioträningen känns naturlig. ATC läses upp som ljud, du svarar med PTT och återkopplingen hjälper dig att upptäcka sak- och fraseologifel.',
+                      'Det här är en testversion av en svensk radiotelefonitränare för PPL. Kör den gärna som en elev: lyssna på ATC, svara med PTT och notera vad som känns naturligt, onaturligt eller oklart.',
                       style: TextStyle(fontSize: 16, height: 1.45),
                     ),
                     const SizedBox(height: 22),
@@ -127,8 +127,8 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const _DemoPoint(
                       icon: Icons.record_voice_over_outlined,
-                      title: 'Tala tydligt men normalt',
-                      text: 'Använd svensk radiotelefoni och svensk bokstavering. Du ska inte behöva tala onaturligt långsamt.',
+                      title: 'Tala som du skulle göra på radion',
+                      text: 'Använd svensk radiotelefoni och svensk bokstavering. Försök inte anpassa dig till datorn mer än du skulle göra till en mänsklig motstation.',
                     ),
                     const _DemoPoint(
                       icon: Icons.rule_outlined,
@@ -137,8 +137,8 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const _DemoPoint(
                       icon: Icons.bug_report_outlined,
-                      title: 'Detta är en prototyp',
-                      text: 'Om taligenkänningen verkar ha hört något annat än det du sade, notera gärna exakt vad som hände. Systemet ska inte korrigera elevens svar i smyg.',
+                      title: 'Fyra saker vi vill ha din spontana reaktion på',
+                      text: '1) Känns radioreplikerna trovärdiga? 2) Hur fungerar flyt och tempo? 3) Förstår taligenkänningen dig? 4) Är återkopplingen begriplig och rimlig?',
                     ),
                     const SizedBox(height: 22),
                     FilledButton.icon(
@@ -161,7 +161,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ],
                     const SizedBox(height: 10),
                     const Text(
-                      'Röstservern värms i bakgrunden medan denna sida visas. Mikrofonbehörighet behöver tillåtas i webbläsaren. Ingen API-nyckel ska finnas i själva webbappen.',
+                      'Röstservern värms i bakgrunden medan sidan visas. Tillåt mikrofonen när webbläsaren frågar. Börja gärna i ÖVNING och prova sedan SCENARIO.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                     ),
