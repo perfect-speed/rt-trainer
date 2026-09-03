@@ -1,27 +1,9 @@
-# Web deploy — v0.12.1
+# Web deploy — v0.12.2
 
-From the project root:
+Backend first: commit/push and wait for Render. Verify `/health` reports `0.12.2`.
 
-```powershell
-flutter test
-git status
-git add .
-git commit -m "v0.12.1 Departure State Machine"
-git push
-```
+Local test:
+`flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com`
 
-Wait for Render and verify:
-
-`https://rt-trainer-api.onrender.com/health`
-
-Expected: `version: 0.12.1`, `scenarioFoundation: true`.
-
-For GitHub Pages:
-
-```powershell
-.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com -RepoName rt-trainer
-git status
-git add .
-git commit -m "Deploy web v0.12.1"
-git push
-```
+Public web deploy after acceptance:
+`./deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com -RepoName rt-trainer`

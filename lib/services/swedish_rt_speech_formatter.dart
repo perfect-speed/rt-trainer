@@ -38,16 +38,16 @@ class SwedishRtSpeechFormatter {
   };
 
   static const _digits = <String, String>{
-    '0': 'nolla',
+    '0': 'noll',
     '1': 'ett',
-    '2': 'tvåa',
-    '3': 'trea',
+    '2': 'två',
+    '3': 'tre',
     '4': 'fyra',
-    '5': 'femma',
-    '6': 'sexa',
+    '5': 'fem',
+    '6': 'sex',
     '7': 'sju',
     '8': 'åtta',
-    '9': 'nia',
+    '9': 'nio',
   };
 
   String format(String source) {

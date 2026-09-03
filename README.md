@@ -1,19 +1,11 @@
-# RT Trainer v0.12.1
+# RT Trainer v0.12.2 — Kalmar Scenario Corrections
 
-## Departure State Machine
+This release keeps the v0.12.1 departure state machine and corrects three issues found in cockpit-style testing.
 
-This version turns SCENARIO into a small operational departure sequence at Kalmar rather than a disguised readback drill.
+- Kalmar ground picture redrawn as a simplified AIP-based ESMQ layout: RWY 16/34, crossing RWY 05/23, Apron 1/2 and TWY A. The RWY 16 holding point is now visibly before the runway.
+- Callsign state fixed: after ATC introduces `S-QX`, the scenario accepts both textual `S-QX` and spoken Swedish spelling `Sigurd Qvintus Xerxes`.
+- ATC introduces the abbreviated callsign after contact is established instead of repeatedly using the full registration.
+- Normal Swedish RT digit words are used in good radio conditions: noll, ett, två, tre, fyra, fem, sex, sju, åtta, nio.
+- OpenAI v0.9.2 radio-DSP speech remains the frozen speech baseline. No Azure/prosody experiment is active.
 
-Test flow:
-1. Establish contact: “Kalmartornet, SE-KQX, god middag.”
-2. After ATC answers, request taxi.
-3. Read back taxi clearance.
-4. Aircraft moves rapidly to holding point (compressed event time).
-5. Pilot reports ready.
-6. Read back line-up clearance; aircraft moves onto runway.
-7. Pilot reports ready for departure.
-8. Read back take-off clearance; aircraft starts/departs.
-
-The visual panel follows the same state machine. Radio itself is not accelerated. There is deliberately no automatic Sweden Control handoff yet.
-
-Speech baseline: OpenAI v0.9.2 + existing radio DSP.
+The airport graphic is a training schematic, not a navigation chart.

@@ -229,7 +229,8 @@ class _TrainerScreenState extends State<TrainerScreen> {
     final compact = normalized.replaceAll(RegExp(r'[^a-z0-9åäö]'), '');
     return compact.contains('sekqx') || compact.contains('sqx') ||
         (normalized.contains('sigurd') && normalized.contains('erik') &&
-            normalized.contains('kalle') && normalized.contains('qvintus') && normalized.contains('xerxes'));
+            normalized.contains('kalle') && normalized.contains('qvintus') && normalized.contains('xerxes')) ||
+        (normalized.contains('sigurd') && normalized.contains('qvintus') && normalized.contains('xerxes'));
   }
 
   void _pilotEvent(String text, {bool error = false}) {
@@ -275,7 +276,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
         case DeparturePhase.requestTaxi:
           if (!n.contains('taxi')) { _result = const ValidationResult(items: [], feedback: 'Kontakten är etablerad. Ange nu din avsikt.', atcResponse: 'SE-KQX, Kalmar torn.', isComplete: false); return; }
           _departurePhase = DeparturePhase.taxiReadback;
-          _atcEvent('SE-KQX, taxa till väntplats bana 16, QNH 1016, transponder 4255.');
+          _atcEvent('S-QX, taxa till väntplats bana 16, QNH 1016, transponder 4255.');
           break;
         case DeparturePhase.taxiReadback:
           final ok = n.contains('16') || n.contains('ett sex') || n.contains('sexton');
