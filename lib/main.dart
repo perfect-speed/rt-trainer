@@ -12,7 +12,7 @@ class RtTrainerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RT Trainer Testpilot',
+      title: 'RT Trainer Demo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       home: const DemoWelcomeScreen(),

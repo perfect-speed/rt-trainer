@@ -27,7 +27,7 @@ const upload = multer({
 const speechCache = new Map();
 const SPEECH_CACHE_MAX = Number(process.env.RT_SPEECH_CACHE_MAX || '50');
 
-// v0.10.0 explicit-prosodic-boundary experiment. The deterministic phraseology
+// v0.10.1 explicit-prosodic-boundary A/B experiment. The deterministic phraseology
 // and v0.9 radio DSP remain frozen. Azure SSML is used only to control timing
 // inside familiar RT chunks. The v0.9.2 OpenAI pronunciation-chunk path is
 // retained as the A/B baseline.
@@ -173,7 +173,7 @@ async function getAzureBaseTtsPcm(spokenText, { explicitControl = true } = {}) {
       'Ocp-Apim-Subscription-Key': azureSpeechKey,
       'Content-Type': 'application/ssml+xml',
       'X-Microsoft-OutputFormat': 'raw-24khz-16bit-mono-pcm',
-      'User-Agent': 'rt-trainer-v0.10.0',
+      'User-Agent': 'rt-trainer-v0.10.1',
     },
     body: ssml,
   });
@@ -759,7 +759,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.10.0-realtime-reference',
+              purpose: 'rt-trainer-v0.10.1-realtime-reference',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -1048,7 +1048,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               `NORMATIV REFERENS (ändra inget): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.10.0-realtime-reference', attempt: String(attempt) },
+            metadata: { purpose: 'rt-trainer-v0.10.1-realtime-reference', attempt: String(attempt) },
           },
         }));
         return;
@@ -1204,7 +1204,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.10.0', speechDefault: 'azure-ssml-radio-dsp-explicit-boundary-control', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.10.1', speechDefault: 'azure-ssml-radio-dsp-explicit-boundary-control', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -1216,7 +1216,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.10.0', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.10.1', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {

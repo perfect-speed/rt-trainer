@@ -1,4 +1,4 @@
-# Web deploy — v0.10.0
+# Web deploy — v0.10.1
 
 ## 1. Replace the project files
 
@@ -47,7 +47,7 @@ Expected key fields include:
 
 ```json
 {
-  "version": "0.10.0",
+  "version": "0.10.1",
   "azureSpeechConfigured": true,
   "speechDefault": "azure-ssml-radio-dsp-explicit-boundary-control"
 }

@@ -1,4 +1,4 @@
-# RT Trainer v0.10.0 — Explicit prosodic boundary control
+# RT Trainer v0.10.1 — Explicit prosodic boundary control
 
 ## Hypothesis
 
@@ -14,7 +14,7 @@ AtcMessage / world truth
   -> learner
 ```
 
-No scenario values, normative wording, validator rules, learner ASR behavior, or radio-channel DSP coefficients are intentionally changed in v0.10.0.
+No scenario values, normative wording, validator rules, learner ASR behavior, or radio-channel DSP coefficients are intentionally changed in v0.10.1.
 
 ## Experimental conditions
 

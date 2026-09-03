@@ -102,7 +102,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Demo v0.10.0 · explicit prosodisk timing', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('Test v0.10.1 · Azure A/B-jämförelse', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),
@@ -116,7 +116,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Det här är en testversion av en svensk radiotelefonitränare för PPL. Kör den gärna som en elev: lyssna på ATC, svara med PTT och notera vad som känns naturligt, onaturligt eller oklart.',
+                      'Syftet med denna version är att jämföra tre röstvillkor på exakt samma ATC-replik: Azure med 90 ms explicit timing, Azure utan explicit timing och den frysta v0.9.2-baslinjen. Du kan fortfarande svara med PTT och prova den vanliga återkopplingen.',
                       style: TextStyle(fontSize: 16, height: 1.45),
                     ),
                     const SizedBox(height: 22),
@@ -127,8 +127,8 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const _DemoPoint(
                       icon: Icons.record_voice_over_outlined,
-                      title: 'Tala som du skulle göra på radion',
-                      text: 'Använd svensk radiotelefoni och svensk bokstavering. Försök inte anpassa dig till datorn mer än du skulle göra till en mänsklig motstation.',
+                      title: 'Tala tydligt men normalt',
+                      text: 'Använd svensk radiotelefoni och svensk bokstavering. Du ska inte behöva tala onaturligt långsamt.',
                     ),
                     const _DemoPoint(
                       icon: Icons.rule_outlined,
@@ -137,8 +137,8 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const _DemoPoint(
                       icon: Icons.bug_report_outlined,
-                      title: 'Fyra saker vi vill ha din spontana reaktion på',
-                      text: '1) Känns radioreplikerna trovärdiga? 2) Hur fungerar flyt och tempo? 3) Förstår taligenkänningen dig? 4) Är återkopplingen begriplig och rimlig?',
+                      title: 'Detta är en prototyp',
+                      text: 'Om taligenkänningen verkar ha hört något annat än det du sade, notera gärna exakt vad som hände. Systemet ska inte korrigera elevens svar i smyg.',
                     ),
                     const SizedBox(height: 22),
                     FilledButton.icon(
@@ -161,7 +161,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ],
                     const SizedBox(height: 10),
                     const Text(
-                      'Röstservern värms i bakgrunden medan sidan visas. Tillåt mikrofonen när webbläsaren frågar. Börja gärna i ÖVNING och prova sedan SCENARIO.',
+                      'Röstservern värms i bakgrunden medan denna sida visas. Mikrofonbehörighet behöver tillåtas i webbläsaren. Ingen API-nyckel ska finnas i själva webbappen.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                     ),

@@ -121,7 +121,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.openAiBaselineRadio;
+  SpeechEngine _speechEngine = SpeechEngine.azureProsodyRadio;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -195,9 +195,21 @@ class _TrainerScreenState extends State<TrainerScreen> {
         spokenScript,
       ].join('|');
 
+  Future<void> _selectSpeechEngine(SpeechEngine engine) async {
+    if (_isSpeakingAtc || _speechEngine == engine) return;
+    setState(() {
+      _speechEngine = engine;
+      _speechError = null;
+    });
+    // Immediate replay makes the comparison controlled: same training step,
+    // same deterministic spoken script and radio DSP, only synthesis/prosody
+    // changes between the three conditions.
+    await _speakCurrentAtc();
+  }
+
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.10.0 is a controlled A/B experiment. Both conditions use the same
+    // v0.10.1 is a controlled A/B experiment. Both conditions use the same
     // deterministic spoken script and the same frozen v0.9 radio DSP. The only
     // intended difference is the synthesis/prosody layer: Azure SSML timing
     // versus the v0.9.2 OpenAI TTS pronunciation-chunk baseline.
@@ -597,18 +609,38 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   label: Text(_showAtcPromptText ? 'DÖLJ TEXT' : 'VISA TEXT'),
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: AppTheme.panelElevated,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'TESTPILOT · RADIO',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
+                ChoiceChip(
+                  label: const Text('AZURE · 90 ms'),
+                  selected: _speechEngine == SpeechEngine.azureProsodyRadio,
+                  onSelected: _isSpeakingAtc ? null : (selected) {
+                    if (selected) _selectSpeechEngine(SpeechEngine.azureProsodyRadio);
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+                ChoiceChip(
+                  label: const Text('AZURE · PLAIN'),
+                  selected: _speechEngine == SpeechEngine.azurePlainRadio,
+                  onSelected: _isSpeakingAtc ? null : (selected) {
+                    if (selected) _selectSpeechEngine(SpeechEngine.azurePlainRadio);
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+                ChoiceChip(
+                  label: const Text('BASE · v0.9.2'),
+                  selected: _speechEngine == SpeechEngine.openAiBaselineRadio,
+                  onSelected: _isSpeakingAtc ? null : (selected) {
+                    if (selected) _selectSpeechEngine(SpeechEngine.openAiBaselineRadio);
+                  },
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'A/B-test: byt röstläge ovan. Samma ATC-replik spelas upp direkt så att du kan jämföra pauser, bokstavering och Q N Helge.',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: veryCompact ? 10 : 11),
+              ),
             ),
             if (_speechError != null)
               Padding(
@@ -701,22 +733,10 @@ class _TrainerScreenState extends State<TrainerScreen> {
               ),
               const SizedBox(height: 8),
             ],
-            if (_result?.isComplete != true) ...[
-              _pttButton(),
-              _voiceStatus(),
-              SizedBox(height: veryCompact ? 6 : 10),
-            ] else ...[
-              FilledButton.icon(
-                onPressed: _nextStep,
-                icon: Icon(_stepIndex == _steps.length - 1 ? Icons.flag_outlined : Icons.arrow_forward),
-                label: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(_stepIndex == _steps.length - 1 ? 'SLUTFÖR ÖVNINGEN' : 'NÄSTA'),
-                ),
-              ),
-              SizedBox(height: veryCompact ? 6 : 10),
-            ],
-            ReadbackCard(result: _result, onNext: null, isLastStep: _stepIndex == _steps.length - 1),
+            _pttButton(),
+            _voiceStatus(),
+            SizedBox(height: veryCompact ? 6 : 10),
+            ReadbackCard(result: _result, onNext: _result?.isComplete == true ? _nextStep : null, isLastStep: _stepIndex == _steps.length - 1),
           ],
         ),
       );
@@ -764,7 +784,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   border: Border.all(color: AppTheme.accent.withValues(alpha: .20)),
                 ),
                 child: const Text(
-                  'Tack. Ge gärna en spontan återkoppling efteråt: Vad kändes mest realistiskt? Vad bröt illusionen? Var tempo och flyt rimligt? Missförstod taligenkänningen något? Var någon bedömning orimlig?',
+                  'Som testpilot: notera gärna om taligenkänningen misstolkade något, om återkopplingen kändes rimlig och om någon radioreplik kändes onaturlig.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textMuted, height: 1.35),
                 ),
@@ -889,7 +909,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · TESTPILOT' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.10.1' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -906,7 +926,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.10.0 · explicit prosodisk timing', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Test v0.10.1 · Azure A/B', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

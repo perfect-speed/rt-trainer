@@ -1,10 +1,11 @@
-# Testpilot-webbversion
+# RT Trainer v0.10.1
 
-Den publika testpilotversionen använder avsiktligt den stabila OpenAI/v0.9.2-röstbaslinjen via v0.10-backenden. Azure Speech behövs inte för testpiloten. Syftet är att få spontan återkoppling på radiokänsla, tempo/flyt, taligenkänning och pedagogisk återkoppling innan nästa talsyntesexperiment införs.
+## v0.10.1 change
 
-# RT Trainer v0.10.0
+The speech synthesis experiment itself is unchanged. This release makes the A/B test easier to run now that Azure Speech is configured: selecting any speech condition immediately replays the current ATC utterance, so the operational message, deterministic phraseology and radio DSP remain constant while only synthesis/prosody changes.
 
-v0.10.0 is a controlled **explicit prosodic boundary** experiment. The operational message model, deterministic Swedish phraseology, learner ASR/validation, and the v0.9 VHF radio DSP are frozen.
+
+v0.10.1 is a controlled **explicit prosodic boundary** experiment. The operational message model, deterministic Swedish phraseology, learner ASR/validation, and the v0.9 VHF radio DSP are frozen.
 
 The experiment adds Azure Speech SSML as a controllable timing layer and exposes three post-DSP listening conditions:
 
