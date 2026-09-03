@@ -209,9 +209,9 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.11 compares the frozen v0.9.2 OpenAI baseline with a narrow local-flow
-    // candidate. Same deterministic spoken script, voice family and frozen v0.9
-    // radio DSP; only local pacing of callsign/QNH groups changes.
+    // v0.11.1 compares the frozen v0.9.2 OpenAI baseline with a selective
+    // callsign-flow candidate. Only the leading callsign gets local pacing;
+    // Q N Helge and the remainder return to the frozen v0.9.2 baseline.
     final spokenScript = _speechFormatter.format(_step.atcTransmission);
     final speechText = spokenScript;
     final cacheKey = _speechCacheKey(spokenScript);
@@ -615,7 +615,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   visualDensity: VisualDensity.compact,
                 ),
                 ChoiceChip(
-                  label: const Text('FLOW · v0.11'),
+                  label: const Text('FLOW · v0.11.1'),
                   selected: _speechEngine == SpeechEngine.openAiFlowRadio,
                   onSelected: _isSpeakingAtc ? null : (selected) {
                     if (selected) _selectSpeechEngine(SpeechEngine.openAiFlowRadio);
@@ -627,7 +627,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'A/B-test inom samma OpenAI-röst: BASE är den frysta v0.9.2. FLOW v0.11 ändrar bara lokal rytm för anropssignal och Q N Helge; samma fraseologi och radio-DSP används.',
+                'A/B-test inom samma OpenAI-röst: BASE är fryst v0.9.2. FLOW v0.11.1 ändrar endast rytmen i anropssignalen; Q N Helge och övrig fraseologi använder åter baslinjen. Samma radio-DSP används.',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: veryCompact ? 10 : 11),
               ),
             ),

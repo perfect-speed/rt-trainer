@@ -102,7 +102,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Test v0.11.0 · OpenAI lokal rytm', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('Test v0.11.1 · selektiv anropssignal', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),
@@ -116,7 +116,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Vi går tillbaka till den frysta v0.9.2-rösten. FLOW v0.11 testar en enda smal förändring: anropssignal och Q N Helge syntetiseras som egna radiogrupper med något högre lokalt tempo. Resten av fraseologin och radio-DSP:n är oförändrade.',
+                      'Vi behåller den frysta v0.9.2-rösten. FLOW v0.11.1 använder den förbättrade lokala rytmen endast för anropssignalen. Q N Helge och resten av fraseologin går åter genom v0.9.2-baslinjen. Radio-DSP:n är oförändrad.',
                       style: TextStyle(fontSize: 16, height: 1.45),
                     ),
                     const SizedBox(height: 22),

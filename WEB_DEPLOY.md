@@ -1,83 +1,41 @@
-# Web deploy — v0.11.0
+# Web deploy — v0.11.1
 
-## 1. Replace the project files
-
-Unpack this release over the existing `rt_trainer` project (preserve your `.git` directory).
-
-## 2. Test before commit
+From the project root:
 
 ```powershell
 flutter test
-```
-
-## 3. Commit and push
-
-```powershell
 git status
 git add .
-git commit -m "Add v0.10 explicit prosodic boundary experiment"
+git commit -m "v0.11.1 selective callsign flow"
 git push
 ```
 
-## 4. Configure Render
+Wait for the Render backend deploy to succeed, then verify:
 
-In the Render service environment, add the Azure Speech key:
+`https://rt-trainer-api.onrender.com/health`
 
-```text
-AZURE_SPEECH_KEY=<your Azure Speech resource key>
-```
-
-The repository `render.yaml` supplies these non-secret defaults:
-
-```text
-AZURE_SPEECH_REGION=swedencentral
-AZURE_TTS_VOICE=sv-SE-MattiasNeural
-AZURE_RT_BREAK_MS=90
-```
-
-Keep the existing `OPENAI_API_KEY`; it is still used for learner ASR and the v0.9.2 baseline condition.
-
-After push/configuration, wait for Render to deploy. Check:
-
-```text
-https://rt-trainer-api.onrender.com/health
-```
-
-Expected key fields include:
+Expected health markers include:
 
 ```json
 {
-  "version": "0.11.0",
-  "azureSpeechConfigured": true,
-  "speechDefault": "azure-ssml-radio-dsp-explicit-boundary-control"
+  "version": "0.11.1",
+  "speechDefault": "openai-v0.9.2-radio-dsp-pronunciation-chunking",
+  "candidateSpeech": "openai-v0.11.1-selective-callsign-flow-radio-dsp"
 }
 ```
 
-## 5. Run locally against Render
+Run locally against Render:
 
 ```powershell
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-## 6. Test order
-
-For each of the five drill cases, use this order:
-
-1. `AZURE · PLAIN`
-2. `AZURE · 90 ms`
-3. `BASE · v0.9.2`
-
-The critical comparison is 1 vs 2. Listen for Q→N versus N→Helge spacing and callsign flow, especially SE-MBN. Verify that no spelling word or operational value is lost or merged.
-
-## 7. Publish GitHub Pages after the experiment is accepted
-
-Use the existing project deployment script:
+For the public GitHub Pages build:
 
 ```powershell
-.\deploy_web.ps1
-
+.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com -RepoName rt-trainer
 git status
-git add docs
-git commit -m "Publish RT Trainer v0.10 web build"
+git add .
+git commit -m "Deploy web v0.11.1"
 git push
 ```

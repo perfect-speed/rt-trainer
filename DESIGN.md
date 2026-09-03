@@ -1,31 +1,20 @@
-# RT Trainer v0.11.0 — Explicit prosodic boundary control
+# RT Trainer v0.11.1 — Selective callsign flow
 
-## Hypothesis
+## Observation behind the change
 
-The remaining speech issue is primarily excessive phrase-boundary strength/timing inside familiar Swedish RT chunks, not pronunciation identity. Explicit SSML timing should therefore improve grouping more reliably than prompt engineering or orthographic hyphenation.
+Listening tests of v0.11.0 found a clearer improvement for spelled aircraft registrations (notably SE-MBN), but no clear improvement for Q N Helge.
 
-## Frozen layers
+## Experimental change
 
-```text
-AtcMessage / world truth
-  -> deterministic Swedish phraseology
-  -> [experimental speech layer]
-  -> frozen v0.9 VHF radio DSP
-  -> learner
-```
+FLOW v0.11.1 therefore applies local prosodic treatment only to the leading spelled callsign. The remainder of the transmission is synthesized through the frozen v0.9.2 baseline function. This means Q N Helge is no longer separately accelerated or independently segmented by the candidate path.
 
-No scenario values, normative wording, validator rules, learner ASR behavior, or radio-channel DSP coefficients are intentionally changed in v0.11.0.
+The candidate pipeline is:
 
-## Experimental conditions
+1. Deterministic Swedish RT script.
+2. Detect leading spelled callsign.
+3. Synthesize that callsign as one compact identity group at the v0.11 callsign speed.
+4. Synthesize the remainder with the frozen v0.9.2 baseline pronunciation-chunking path.
+5. Join with the existing short inter-group gap.
+6. Apply the unchanged v0.9 VHF radio DSP to the complete PCM stream.
 
-1. **Azure explicit**: `sv-SE-MattiasNeural`, explicit 90 ms SSML `<break>` inside the first callsign spelling group and inside `Q N Helge`; a modest +4% rate is scoped to those chunks.
-2. **Azure plain control**: same Azure voice and same deterministic spoken script, but no internal prosodic SSML control.
-3. **v0.9.2 baseline**: existing OpenAI `gpt-4o-mini-tts` pronunciation-chunk path.
-
-All three are processed through the same frozen v0.9 DSP before playback. Frontend and backend caches remain condition-specific so `LYSSNA IGEN` replays the exact accepted waveform.
-
-## Decision rule
-
-The primary comparison is Azure explicit vs Azure plain. If explicit control clearly reduces the Q→N gap and improves callsign grouping without reducing post-DSP intelligibility, the architecture has gained a useful controllable timing layer. If the two Azure conditions are essentially indistinguishable, documented SSML timing is not sufficiently load-bearing for this use case and we should not continue tuning arbitrary break values indefinitely.
-
-The v0.9.2 baseline remains useful for judging whether an Azure gain in control comes with an unacceptable loss in generic voice quality.
+No operational values, phraseology rules, ASR validation rules or radio DSP coefficients are intentionally changed.

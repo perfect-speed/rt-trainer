@@ -1204,7 +1204,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.11.0', speechDefault: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', candidateSpeech: 'openai-v0.11-local-group-flow-radio-dsp', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.11.1', speechDefault: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', candidateSpeech: 'openai-v0.11.1-selective-callsign-flow-radio-dsp', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -1216,7 +1216,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.11.0', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.11.1', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -1336,20 +1336,36 @@ async function synthesizeOpenAiRtFlowSegment(segment, kind) {
 
 async function getOpenAiFlowTtsPcm(spokenText) {
   const segments = String(spokenText || '').split(',').map((v) => v.trim()).filter(Boolean);
-  const key = `flow-v011|${spokenText}`;
+  const key = `flow-v0111-selective-callsign|${spokenText}`;
   const cached = baseTtsPcmCache.get(key);
   if (cached) return { pcm: cached, cache: 'HIT', segments };
 
-  const parts = [];
-  for (let i = 0; i < segments.length; i += 1) {
-    const segment = segments[i];
-    const kind = classifyRtFlowSegment(segment);
-    const pcm = await synthesizeOpenAiRtFlowSegment(segment, kind);
-    if (!pcm.length) throw new Error(`OpenAI RT-flow segment returned no audio (${kind}).`);
-    parts.push(pcm);
-    if (i < segments.length - 1) parts.push(pcmSilence(Number(process.env.OPENAI_RT_GROUP_GAP_MS || '70')));
+  // v0.11.1 keeps the successful v0.11 callsign treatment, but removes the
+  // separate QNH treatment. Only the leading callsign is synthesized as its
+  // own faster identity group. Everything after the first comma is synthesized
+  // with the frozen v0.9.2 baseline path so Q N Helge and all other RT groups
+  // retain baseline wording, tempo instructions and pronunciation handling.
+  if (!segments.length || classifyRtFlowSegment(segments[0]) !== 'callsign') {
+    const baseline = await getOpenAiBaselineTtsPcm(spokenText);
+    return { pcm: baseline.pcm, cache: baseline.cache, segments };
   }
-  const pcm = Buffer.concat(parts);
+
+  const callsign = segments[0];
+  const remainder = segments.slice(1).join(', ').trim();
+  const callsignPcm = await synthesizeOpenAiRtFlowSegment(callsign, 'callsign');
+  if (!callsignPcm.length) throw new Error('OpenAI selective callsign flow returned no audio.');
+
+  if (!remainder) {
+    rememberBaseTtsPcm(key, callsignPcm);
+    return { pcm: callsignPcm, cache: 'MISS', segments };
+  }
+
+  const baselineRemainder = await getOpenAiBaselineTtsPcm(remainder);
+  const pcm = Buffer.concat([
+    callsignPcm,
+    pcmSilence(Number(process.env.OPENAI_RT_GROUP_GAP_MS || '70')),
+    baselineRemainder.pcm,
+  ]);
   rememberBaseTtsPcm(key, pcm);
   return { pcm, cache: 'MISS', segments };
 }
@@ -1408,7 +1424,7 @@ app.post('/api/speech', async (req, res) => {
       } else if (engine === 'flow-radio') {
         if (!client) return res.status(503).json({ error: 'OpenAI API is not configured for the v0.11 flow candidate.' });
         base = await getOpenAiFlowTtsPcm(spokenText);
-        engineName = 'openai-v0.11-local-group-flow-radio-dsp';
+        engineName = 'openai-v0.11.1-selective-callsign-flow-radio-dsp';
       } else {
         if (!client) return res.status(503).json({ error: 'OpenAI API is not configured for the v0.9.2 baseline.' });
         base = await getOpenAiBaselineTtsPcm(spokenText);
