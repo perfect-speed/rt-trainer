@@ -11,6 +11,11 @@ const app = express();
 const port = Number(process.env.PORT || 8080);
 const allowedOrigins = (process.env.ALLOWED_ORIGIN || '*').split(',').map((s) => s.trim()).filter(Boolean);
 const client = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const azureSpeechKey = String(process.env.AZURE_SPEECH_KEY || '').trim();
+const azureSpeechRegion = String(process.env.AZURE_SPEECH_REGION || 'swedencentral').trim();
+const azureTtsVoice = String(process.env.AZURE_TTS_VOICE || 'sv-SE-MattiasNeural').trim();
+const azureRtBreakMs = Math.max(0, Math.min(500, Number(process.env.AZURE_RT_BREAK_MS || '90')));
+const azureSpeechConfigured = Boolean(azureSpeechKey && azureSpeechRegion);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
@@ -22,12 +27,14 @@ const upload = multer({
 const speechCache = new Map();
 const SPEECH_CACHE_MAX = Number(process.env.RT_SPEECH_CACHE_MAX || '50');
 
-// v0.9.2 pronunciation-chunk experiment. The v0.9 radio DSP and deterministic
-// phraseology remain unchanged. The only intentional change is an internal
-// pronunciation representation that binds familiar RT chunks before a single
-// neural TTS call. The normative/display text remains untouched.
+// v0.10.0 explicit-prosodic-boundary experiment. The deterministic phraseology
+// and v0.9 radio DSP remain frozen. Azure SSML is used only to control timing
+// inside familiar RT chunks. The v0.9.2 OpenAI pronunciation-chunk path is
+// retained as the A/B baseline.
 const baseTtsPcmCache = new Map();
 const BASE_TTS_PCM_CACHE_MAX = Number(process.env.RT_BASE_TTS_PCM_CACHE_MAX || '30');
+const azureTtsPcmCache = new Map();
+const AZURE_TTS_PCM_CACHE_MAX = Number(process.env.RT_AZURE_TTS_PCM_CACHE_MAX || '30');
 
 
 
@@ -81,6 +88,104 @@ function rememberBaseTtsPcm(key, pcm) {
     const oldest = baseTtsPcmCache.keys().next().value;
     baseTtsPcmCache.delete(oldest);
   }
+}
+
+function rememberAzureTtsPcm(key, pcm) {
+  if (azureTtsPcmCache.has(key)) azureTtsPcmCache.delete(key);
+  azureTtsPcmCache.set(key, pcm);
+  while (azureTtsPcmCache.size > AZURE_TTS_PCM_CACHE_MAX) {
+    const oldest = azureTtsPcmCache.keys().next().value;
+    azureTtsPcmCache.delete(oldest);
+  }
+}
+
+function escapeXml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function azureInternalBreak() {
+  return `<break time="${Math.round(azureRtBreakMs)}ms"/>`;
+}
+
+function renderAzureQnhChunk(group) {
+  const source = String(group || '');
+  const re = /\bQ\s+N\s+Helge\b/gi;
+  let result = '';
+  let last = 0;
+  let match;
+  while ((match = re.exec(source)) !== null) {
+    result += escapeXml(source.slice(last, match.index));
+    result += `<prosody rate="+4%"><say-as interpret-as="characters">Q</say-as>${azureInternalBreak()}<say-as interpret-as="characters">N</say-as>${azureInternalBreak()}Helge</prosody>`;
+    last = match.index + match[0].length;
+  }
+  result += escapeXml(source.slice(last));
+  return result;
+}
+
+function buildAzureRtSsml(spokenText, { explicitControl = true } = {}) {
+  const text = String(spokenText || '').trim();
+  if (!explicitControl) {
+    return [
+      `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="sv-SE">`,
+      `<voice name="${escapeXml(azureTtsVoice)}">`,
+      escapeXml(text),
+      `</voice></speak>`,
+    ].join('');
+  }
+  const groups = text.split(/,\s*/).map((value) => value.trim()).filter(Boolean);
+  const rendered = groups.map((group, index) => {
+    const words = group.split(/\s+/).filter(Boolean);
+    const isCallsignGroup = index === 0 && words.length >= 3 && words.length <= 5 &&
+      words.every((word) => SWEDISH_SPELLING_WORDS.has(word));
+    if (isCallsignGroup) {
+      const body = words.map(escapeXml).join(azureInternalBreak());
+      return `<prosody rate="+4%">${body}</prosody>`;
+    }
+    return renderAzureQnhChunk(group);
+  });
+
+  return [
+    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="sv-SE">`,
+    `<voice name="${escapeXml(azureTtsVoice)}">`,
+    rendered.join(', '),
+    `</voice></speak>`,
+  ].join('');
+}
+
+async function getAzureBaseTtsPcm(spokenText, { explicitControl = true } = {}) {
+  if (!azureSpeechConfigured) {
+    throw new Error('Azure Speech is not configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION.');
+  }
+  const ssml = buildAzureRtSsml(spokenText, { explicitControl });
+  const key = `${azureSpeechRegion}|${azureTtsVoice}|${explicitControl ? azureRtBreakMs : 'plain'}|${ssml}`;
+  const cached = azureTtsPcmCache.get(key);
+  if (cached) return { pcm: cached, cache: 'HIT', ssml };
+
+  const endpoint = `https://${azureSpeechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Ocp-Apim-Subscription-Key': azureSpeechKey,
+      'Content-Type': 'application/ssml+xml',
+      'X-Microsoft-OutputFormat': 'raw-24khz-16bit-mono-pcm',
+      'User-Agent': 'rt-trainer-v0.10.0',
+    },
+    body: ssml,
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`Azure Speech failed (${response.status}): ${detail}`);
+  }
+  const pcm = Buffer.from(await response.arrayBuffer());
+  if (!pcm.length) throw new Error('Azure Speech returned no audio.');
+  rememberAzureTtsPcm(key, pcm);
+  return { pcm, cache: 'MISS', ssml };
 }
 
 function hash32(text) {
@@ -654,7 +759,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.9.2-realtime-reference',
+              purpose: 'rt-trainer-v0.10.0-realtime-reference',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -943,7 +1048,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               `NORMATIV REFERENS (ändra inget): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.9.2-realtime-reference', attempt: String(attempt) },
+            metadata: { purpose: 'rt-trainer-v0.10.0-realtime-reference', attempt: String(attempt) },
           },
         }));
         return;
@@ -1099,7 +1204,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.9.2', speechDefault: 'deterministic-tts-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.10.0', speechDefault: 'azure-ssml-radio-dsp-explicit-boundary-control', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -1111,7 +1216,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.9.2', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.10.0', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -1155,7 +1260,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 });
 
 
-async function getDeterministicBaseTtsPcm(spokenText) {
+async function getOpenAiBaselineTtsPcm(spokenText) {
   const pronunciationText = buildPronunciationChunkScript(spokenText);
   const key = baseTtsPcmKey(pronunciationText);
   const cached = baseTtsPcmCache.get(key);
@@ -1193,15 +1298,13 @@ app.post('/api/speech', async (req, res) => {
     requestId,
     uptimeSeconds: Math.round(process.uptime()),
   });
-  if (!client) {
-    return res.status(503).json({ error: 'OpenAI API is not configured.' });
-  }
-
   const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
-  const requestedEngine = String(req.body?.engine || 'radio');
+  const requestedEngine = String(req.body?.engine || 'azure-radio');
   const engine = requestedEngine === 'realtime'
     ? 'realtime'
-    : (requestedEngine === 'deterministic' || requestedEngine === 'clean' ? 'clean' : 'radio');
+    : (requestedEngine === 'baseline-radio' || requestedEngine === 'baseline'
+        ? 'baseline-radio'
+        : (requestedEngine === 'azure-plain-radio' ? 'azure-plain-radio' : 'azure-radio'));
   const spokenText = typeof req.body?.spokenText === 'string' ? req.body.spokenText.trim().slice(0, 800) : '';
   if (!text) {
     return res.status(400).json({ error: 'Speech text missing.' });
@@ -1226,18 +1329,27 @@ app.post('/api/speech', async (req, res) => {
       return res.send(cached.buffer);
     }
 
-    if (engine === 'radio' || engine === 'clean') {
+    if (engine === 'azure-radio' || engine === 'azure-plain-radio' || engine === 'baseline-radio') {
       if (!spokenText) return res.status(400).json({ error: 'Deterministic spoken RT script missing.' });
 
-      // v0.9.2 keeps the v0.9 radio channel fixed while testing an internal pronunciation representation.
-      // CLEAN and RADIO share the exact same base TTS PCM whenever the Render
-      // process remains alive; RADIO then applies deterministic post-synthesis DSP.
-      const base = await getDeterministicBaseTtsPcm(spokenText);
-      const outputPcm = engine === 'radio'
-        ? applyVhfRadioDsp(base.pcm, spokenText, 24000)
-        : base.pcm;
+      let base;
+      let engineName;
+      if (engine === 'azure-radio' || engine === 'azure-plain-radio') {
+        const explicitControl = engine === 'azure-radio';
+        base = await getAzureBaseTtsPcm(spokenText, { explicitControl });
+        engineName = explicitControl
+          ? 'azure-ssml-radio-dsp-explicit-boundary-control'
+          : 'azure-plain-radio-dsp-control';
+      } else {
+        if (!client) return res.status(503).json({ error: 'OpenAI API is not configured for the v0.9.2 baseline.' });
+        base = await getOpenAiBaselineTtsPcm(spokenText);
+        engineName = 'openai-v0.9.2-radio-dsp-pronunciation-chunking';
+      }
+
+      // Controlled A/B: both conditions pass through the exact same frozen v0.9
+      // VHF radio DSP. Only the speech/prosody layer differs.
+      const outputPcm = applyVhfRadioDsp(base.pcm, spokenText, 24000);
       const buffer = pcm16ToWav(outputPcm, 24000, 1);
-      const engineName = engine === 'radio' ? 'deterministic-tts-radio-dsp-pronunciation-chunking' : 'deterministic-tts-clean-pronunciation-chunking';
 
       rememberSpeech(cacheKey, { buffer, contentType: 'audio/wav', engine: engineName, fallback: false });
       res.setHeader('Content-Type', 'audio/wav');
@@ -1253,7 +1365,10 @@ app.post('/api/speech', async (req, res) => {
         engine: engineName,
         fallback: false,
         script: spokenText,
-        pronunciationScript: base.pronunciationText,
+        azureBreakMs: engine === 'azure-radio' ? azureRtBreakMs : undefined,
+        azureControl: engine === 'azure-radio' ? 'explicit' : (engine === 'azure-plain-radio' ? 'plain' : undefined),
+        azureVoice: engine === 'azure-radio' || engine === 'azure-plain-radio' ? azureTtsVoice : undefined,
+        pronunciationScript: engine === 'baseline-radio' ? base.pronunciationText : undefined,
         uptimeSeconds: Math.round(process.uptime()),
         totalMs: Date.now() - requestStartedAt,
       });
@@ -1261,6 +1376,7 @@ app.post('/api/speech', async (req, res) => {
     }
 
     if (engine === 'realtime') {
+      if (!client) return res.status(503).json({ error: 'OpenAI API is not configured.' });
       if (!spokenText) return res.status(400).json({ error: 'Exact spoken RT script missing.' });
       const result = await generateResilientSpeech(text, spokenText);
       rememberSpeech(cacheKey, {

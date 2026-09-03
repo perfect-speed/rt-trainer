@@ -16,7 +16,7 @@ import '../widgets/status_chip.dart';
 
 enum PracticeMode { drillReadback, scenario }
 
-enum SpeechEngine { radioDsp, cleanTts }
+enum SpeechEngine { azureProsodyRadio, azurePlainRadio, openAiBaselineRadio }
 
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
@@ -121,7 +121,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.radioDsp;
+  SpeechEngine _speechEngine = SpeechEngine.azureProsodyRadio;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -197,10 +197,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.9.2 caches the first synthesized audio for the current exercise and
-    // speech condition. RADIO and CLEAN use the same deterministic spoken script;
-    // the backend applies radio-channel DSP only in the RADIO condition.
-    // LYSSNA IGEN therefore replays the exact same waveform.
+    // v0.10.0 is a controlled A/B experiment. Both conditions use the same
+    // deterministic spoken script and the same frozen v0.9 radio DSP. The only
+    // intended difference is the synthesis/prosody layer: Azure SSML timing
+    // versus the v0.9.2 OpenAI TTS pronunciation-chunk baseline.
+    // LYSSNA IGEN replays the exact same waveform for each condition.
     final spokenScript = _speechFormatter.format(_step.atcTransmission);
     final speechText = spokenScript;
     final cacheKey = _speechCacheKey(spokenScript);
@@ -215,7 +216,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
           : await _api.synthesizeSpeech(
               text: speechText,
               spokenText: spokenScript,
-              engine: _speechEngine == SpeechEngine.radioDsp ? 'radio' : 'clean',
+              engine: switch (_speechEngine) {
+                SpeechEngine.azureProsodyRadio => 'azure-radio',
+                SpeechEngine.azurePlainRadio => 'azure-plain-radio',
+                SpeechEngine.openAiBaselineRadio => 'baseline-radio',
+              },
             );
 
       // Cache before playback. If browser autoplay blocks the first play, the
@@ -593,16 +598,30 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 ChoiceChip(
-                  label: Text(_speechEngine == SpeechEngine.radioDsp ? 'RADIO · v0.9.2' : 'REN RÖST · v0.9.2'),
-                  selected: _speechEngine == SpeechEngine.radioDsp,
-                  onSelected: _isSpeakingAtc
-                      ? null
-                      : (_) => setState(() {
-                            _speechEngine = _speechEngine == SpeechEngine.radioDsp
-                                ? SpeechEngine.cleanTts
-                                : SpeechEngine.radioDsp;
-                            _speechError = null;
-                          }),
+                  label: const Text('AZURE · 90 ms'),
+                  selected: _speechEngine == SpeechEngine.azureProsodyRadio,
+                  onSelected: _isSpeakingAtc ? null : (_) => setState(() {
+                    _speechEngine = SpeechEngine.azureProsodyRadio;
+                    _speechError = null;
+                  }),
+                  visualDensity: VisualDensity.compact,
+                ),
+                ChoiceChip(
+                  label: const Text('AZURE · PLAIN'),
+                  selected: _speechEngine == SpeechEngine.azurePlainRadio,
+                  onSelected: _isSpeakingAtc ? null : (_) => setState(() {
+                    _speechEngine = SpeechEngine.azurePlainRadio;
+                    _speechError = null;
+                  }),
+                  visualDensity: VisualDensity.compact,
+                ),
+                ChoiceChip(
+                  label: const Text('BASE · v0.9.2'),
+                  selected: _speechEngine == SpeechEngine.openAiBaselineRadio,
+                  onSelected: _isSpeakingAtc ? null : (_) => setState(() {
+                    _speechEngine = SpeechEngine.openAiBaselineRadio;
+                    _speechError = null;
+                  }),
                   visualDensity: VisualDensity.compact,
                 ),
               ],
@@ -874,7 +893,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.9.2' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.10.0' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -891,7 +910,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.9.2 · uttalsgruppering', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.10.0 · explicit prosodisk timing', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

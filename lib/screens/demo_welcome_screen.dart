@@ -102,7 +102,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Demo v0.9.2 · uttalsgruppering', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('Demo v0.10.0 · explicit prosodisk timing', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),
