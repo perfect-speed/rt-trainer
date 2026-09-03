@@ -16,7 +16,7 @@ import '../widgets/status_chip.dart';
 
 enum PracticeMode { drillReadback, scenario }
 
-enum SpeechEngine { openAiBaselineRadio, openAiFlowRadio }
+enum SpeechEngine { radioDsp, cleanTts }
 
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
@@ -81,28 +81,29 @@ class _TrainerScreenState extends State<TrainerScreen> {
   static const _scenarioSteps = <TrainingStep>[
     TrainingStep(
       id: 'SC01',
-      title: 'Etablerad kontakt',
-      instruction: 'Du är SE-KQX. Kontakten är etablerad och du taxar för avgång. Läs tillbaka ATC.',
-      atcMessage: AtcMessage(callsign: 'SE-KQX', runway: '19', qnh: '1009'),
-      expected: ExpectedReadback(callsign: 'SE-KQX', runway: '19', qnh: '1009'),
-      coachNote: 'Scenario: tidigare tillstånd finns kvar när du går vidare.',
+      title: 'Taxi efter eget anrop',
+      instruction: 'Du har anropat Kalmar torn och fått taxiinstruktionen. Läs tillbaka bana, QNH, transponderkod och anropssignal.',
+      atcMessage: AtcMessage(callsign: 'SE-KQX', runway: '16', qnh: '1016', squawk: '4255', taxiToHoldingPoint: true),
+      expected: ExpectedReadback(callsign: 'SE-KQX', runway: '16', qnh: '1016', squawk: '4255'),
+      coachNote: 'Scenario: systemet började med ditt eget anrop. Radiohistoriken och kontaktstatusen följer nu med vidare.',
     ),
     TrainingStep(
       id: 'SC02',
       title: 'ATC förkortar anropssignalen',
-      instruction: 'ATC har nu introducerat den förkortade anropssignalen. Full eller korrekt förkortad form accepteras.',
+      instruction: 'Efter korrekt återläsning använder ATC nu förkortad anropssignal. Full eller korrekt förkortad form accepteras.',
       atcMessage: AtcMessage(callsign: 'S-QX', squawk: '4261'),
       expected: ExpectedReadback(callsign: 'SE-KQX', squawk: '4261', allowAbbreviatedCallsign: true),
     ),
     TrainingStep(
       id: 'SC03',
-      title: 'Frekvensbyte',
-      instruction: 'Kommunikationen fortsätter i samma scenario. Läs tillbaka frekvensen.',
+      title: 'Frekvensbyte efter etablerad kontakt',
+      instruction: 'Kontakten fortsätter i samma scenario. Läs tillbaka den nya frekvensen och anropssignalen.',
       atcMessage: AtcMessage(callsign: 'S-QX', contactUnit: 'Sweden Control', frequency: '124.725'),
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-KQX', frequency: '124.725', allowAbbreviatedCallsign: true),
     ),
   ];
+
 
   PracticeMode _mode = PracticeMode.drillReadback;
   int _stepIndex = 0;
@@ -110,6 +111,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _sessionComplete = false;
   int _attempts = 0;
   final Set<int> _stepsWithRetry = <int>{};
+  bool _scenarioAwaitingInitialCall = false;
   int _mobileView = 0;
   bool _isRecording = false;
   bool _pttHeld = false;
@@ -121,7 +123,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.openAiBaselineRadio;
+  SpeechEngine _speechEngine = SpeechEngine.radioDsp;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -144,7 +146,10 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   void _startCurrentStep({required bool resetHistory}) {
     if (resetHistory) _events.clear();
-    _events.add(RadioEvent(time: DateTime.now(), speaker: 'ATC', text: _step.atcTransmission, isPrompt: true));
+    final waitingForPilotCall = _isScenario && _scenarioAwaitingInitialCall;
+    if (!waitingForPilotCall) {
+      _events.add(RadioEvent(time: DateTime.now(), speaker: 'ATC', text: _step.atcTransmission, isPrompt: true));
+    }
     _result = null;
     _controller.clear();
     _lastRawTranscript = null;
@@ -153,15 +158,18 @@ class _TrainerScreenState extends State<TrainerScreen> {
     _asrWarning = null;
     _showAtcPromptText = false;
     _speechError = null;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _speakCurrentAtc();
-    });
+    if (!waitingForPilotCall) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _speakCurrentAtc();
+      });
+    }
   }
 
   void _switchMode(PracticeMode mode) {
     if (_mode == mode) return;
     setState(() {
       _mode = mode;
+      _scenarioAwaitingInitialCall = mode == PracticeMode.scenario;
       _stepIndex = 0;
       _attempts = 0;
       _stepsWithRetry.clear();
@@ -175,6 +183,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
     final text = (textOverride ?? _controller.text).trim();
     if (text.isEmpty) return;
 
+    if (_isScenario && _scenarioAwaitingInitialCall) {
+      _handleScenarioInitialCall(text);
+      return;
+    }
+
     final result = _validator.validate(transmission: text, expected: _step.expected);
     setState(() {
       _attempts++;
@@ -187,6 +200,82 @@ class _TrainerScreenState extends State<TrainerScreen> {
   }
 
 
+  void _handleScenarioInitialCall(String text) {
+    final normalized = text.toLowerCase().replaceAll(RegExp(r'[^a-zåäö0-9-]+'), ' ');
+    final compact = normalized.replaceAll(RegExp(r'[^a-z0-9åäö]'), '');
+    final hasCallsign = compact.contains('sekqx') ||
+        (normalized.contains('sigurd') && normalized.contains('erik') &&
+            normalized.contains('kalle') && normalized.contains('qvintus') && normalized.contains('xerxes'));
+    final hasUnit = normalized.contains('kalmar') &&
+        (normalized.contains('torn') || normalized.contains('tower'));
+    final hasIntent = normalized.contains('taxi') || normalized.contains('start') ||
+        normalized.contains('avgång') || normalized.contains('avgang');
+
+    final items = <ValidationItem>[
+      ValidationItem(
+        label: 'Callsign',
+        expected: 'SE-KQX',
+        observed: hasCallsign ? 'SE-KQX' : null,
+        status: hasCallsign ? ValidationStatus.correct : ValidationStatus.missing,
+      ),
+      ValidationItem(
+        label: 'ATS-enhet',
+        expected: 'Kalmar torn',
+        observed: hasUnit ? 'Kalmar torn' : null,
+        status: hasUnit ? ValidationStatus.correct : ValidationStatus.missing,
+      ),
+      ValidationItem(
+        label: 'Avsikt',
+        expected: 'taxi/avgång',
+        observed: hasIntent ? 'taxi/avgång' : null,
+        status: hasIntent ? ValidationStatus.correct : ValidationStatus.missing,
+      ),
+    ];
+    final complete = hasCallsign && hasUnit && hasIntent;
+    final result = ValidationResult(
+      items: items,
+      feedback: complete
+          ? 'Anropet identifierar rätt station, flygplan och avsikt. ATC svarar utifrån scenariots aktuella tillstånd.'
+          : 'Det första anropet behöver innehålla station, anropssignal och vad du vill göra.',
+      atcResponse: complete
+          ? _step.atcTransmission
+          : 'SE-KQX, upprepa anropet.',
+      isComplete: complete,
+    );
+
+    setState(() {
+      _attempts++;
+      if (!complete) _stepsWithRetry.add(_stepIndex);
+      _events.add(RadioEvent(
+        time: DateTime.now(),
+        speaker: 'SE-KQX',
+        text: text,
+        isError: !complete,
+      ));
+      _events.add(RadioEvent(
+        time: DateTime.now(),
+        speaker: 'ATC',
+        text: result.atcResponse,
+        isPrompt: complete,
+      ));
+      _result = complete ? null : result;
+      _controller.clear();
+      if (complete) {
+        _scenarioAwaitingInitialCall = false;
+        _lastRawTranscript = null;
+        _lastInterpretedTranscript = null;
+        _asrWarning = null;
+      }
+    });
+
+    if (complete) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _speakCurrentAtc();
+      });
+    }
+  }
+
+
   String _speechCacheKey(String spokenScript) => [
         _mode.name,
         _step.id,
@@ -195,23 +284,12 @@ class _TrainerScreenState extends State<TrainerScreen> {
         spokenScript,
       ].join('|');
 
-  Future<void> _selectSpeechEngine(SpeechEngine engine) async {
-    if (_isSpeakingAtc || _speechEngine == engine) return;
-    setState(() {
-      _speechEngine = engine;
-      _speechError = null;
-    });
-    // Immediate replay makes the comparison controlled: same training step,
-    // same deterministic spoken script and radio DSP, only synthesis/prosody
-    // changes between the three conditions.
-    await _speakCurrentAtc();
-  }
-
   Future<void> _speakCurrentAtc() async {
-    if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.11.1 compares the frozen v0.9.2 OpenAI baseline with a selective
-    // callsign-flow candidate. Only the leading callsign gets local pacing;
-    // Q N Helge and the remainder return to the frozen v0.9.2 baseline.
+    if (_isSpeakingAtc || !_api.isConfigured || (_isScenario && _scenarioAwaitingInitialCall)) return;
+    // v0.9.2 caches the first synthesized audio for the current exercise and
+    // speech condition. RADIO and CLEAN use the same deterministic spoken script;
+    // the backend applies radio-channel DSP only in the RADIO condition.
+    // LYSSNA IGEN therefore replays the exact same waveform.
     final spokenScript = _speechFormatter.format(_step.atcTransmission);
     final speechText = spokenScript;
     final cacheKey = _speechCacheKey(spokenScript);
@@ -226,10 +304,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
           : await _api.synthesizeSpeech(
               text: speechText,
               spokenText: spokenScript,
-              engine: switch (_speechEngine) {
-                SpeechEngine.openAiBaselineRadio => 'baseline-radio',
-                SpeechEngine.openAiFlowRadio => 'flow-radio',
-              },
+              engine: _speechEngine == SpeechEngine.radioDsp ? 'radio' : 'clean',
             );
 
       // Cache before playback. If browser autoplay blocks the first play, the
@@ -339,6 +414,9 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   String _transcriptionContext() {
     final e = _step.expected;
+    if (_isScenario && _scenarioAwaitingInitialCall) {
+      return 'Svensk VFR-radiotelefoni. Flygplanet är SE-KQX och piloten gör ett första anrop till Kalmar torn för taxi/avgång. Svenskt bokstaveringsalfabet har prioritet. Transkribera exakt vad piloten faktiskt säger.';
+    }
     return [
       'Flygplanets anropssignal: ${e.callsign}.',
       if (e.allowAbbreviatedCallsign) 'Förkortad anropssignal ${_shortCallsign(e.callsign)} kan förekomma.',
@@ -461,6 +539,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   void _restart() {
     setState(() {
       _stepIndex = 0;
+      _scenarioAwaitingInitialCall = _isScenario;
       _attempts = 0;
       _stepsWithRetry.clear();
       _sessionComplete = false;
@@ -486,6 +565,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                     stepIndex: _stepIndex,
                     count: _steps.length,
                     step: _step,
+                    awaitingInitialCall: _isScenario && _scenarioAwaitingInitialCall,
                     compact: compact,
                     veryCompact: veryCompact,
                   ),
@@ -545,7 +625,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                 border: Border.all(color: const Color(0xFF263744)),
               ),
               child: const Text(
-                'SCENARIOLÄGE  •  Kontrollerad miljö  •  Kontakt etablerad  •  Tidigare radiohändelser behålls',
+                'SCENARIOLÄGE  •  Stateful dialog  •  Radiohistorik behålls  •  ATC reagerar på scenarioläge',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
               ),
             ),
@@ -593,43 +673,33 @@ class _TrainerScreenState extends State<TrainerScreen> {
               runSpacing: 6,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: _isSpeakingAtc ? null : _speakCurrentAtc,
+                  onPressed: _isSpeakingAtc || (_isScenario && _scenarioAwaitingInitialCall) ? null : _speakCurrentAtc,
                   icon: _isSpeakingAtc
                       ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.volume_up_outlined, size: 18),
-                  label: Text(_isSpeakingAtc ? 'LADDAR LJUD…' : 'LYSSNA IGEN'),
+                  label: Text(_isSpeakingAtc ? 'LADDAR LJUD…' : (_isScenario && _scenarioAwaitingInitialCall) ? 'DIN TUR ATT ANROPA' : 'LYSSNA IGEN'),
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 TextButton.icon(
-                  onPressed: () => setState(() => _showAtcPromptText = !_showAtcPromptText),
+                  onPressed: (_isScenario && _scenarioAwaitingInitialCall) ? null : () => setState(() => _showAtcPromptText = !_showAtcPromptText),
                   icon: Icon(_showAtcPromptText ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
                   label: Text(_showAtcPromptText ? 'DÖLJ TEXT' : 'VISA TEXT'),
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 ChoiceChip(
-                  label: const Text('BASE · v0.9.2'),
-                  selected: _speechEngine == SpeechEngine.openAiBaselineRadio,
-                  onSelected: _isSpeakingAtc ? null : (selected) {
-                    if (selected) _selectSpeechEngine(SpeechEngine.openAiBaselineRadio);
-                  },
-                  visualDensity: VisualDensity.compact,
-                ),
-                ChoiceChip(
-                  label: const Text('FLOW · v0.11.1'),
-                  selected: _speechEngine == SpeechEngine.openAiFlowRadio,
-                  onSelected: _isSpeakingAtc ? null : (selected) {
-                    if (selected) _selectSpeechEngine(SpeechEngine.openAiFlowRadio);
-                  },
+                  label: Text(_speechEngine == SpeechEngine.radioDsp ? 'RADIO · baseline' : 'REN RÖST · baseline'),
+                  selected: _speechEngine == SpeechEngine.radioDsp,
+                  onSelected: _isSpeakingAtc
+                      ? null
+                      : (_) => setState(() {
+                            _speechEngine = _speechEngine == SpeechEngine.radioDsp
+                                ? SpeechEngine.cleanTts
+                                : SpeechEngine.radioDsp;
+                            _speechError = null;
+                          }),
                   visualDensity: VisualDensity.compact,
                 ),
               ],
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'A/B-test inom samma OpenAI-röst: BASE är fryst v0.9.2. FLOW v0.11.1 ändrar endast rytmen i anropssignalen; Q N Helge och övrig fraseologi använder åter baslinjen. Samma radio-DSP används.',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: veryCompact ? 10 : 11),
-              ),
             ),
             if (_speechError != null)
               Padding(
@@ -704,7 +774,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _transmit(),
                 decoration: InputDecoration(
-                  hintText: _result?.isComplete == true ? 'Korrekt – gå vidare' : 'Skriv din återläsning här…',
+                  hintText: _result?.isComplete == true ? 'Korrekt – gå vidare' : (_isScenario && _scenarioAwaitingInitialCall) ? 'Gör ditt första radioanrop…' : 'Skriv din återläsning här…',
                   prefixIcon: const Icon(Icons.keyboard),
                 ),
               ),
@@ -725,10 +795,35 @@ class _TrainerScreenState extends State<TrainerScreen> {
             _pttButton(),
             _voiceStatus(),
             SizedBox(height: veryCompact ? 6 : 10),
-            ReadbackCard(result: _result, onNext: _result?.isComplete == true ? _nextStep : null, isLastStep: _stepIndex == _steps.length - 1),
+            (_isScenario && _scenarioAwaitingInitialCall && _result == null)
+                ? _scenarioInitialCallCard()
+                : ReadbackCard(result: _result, onNext: _result?.isComplete == true ? _nextStep : null, isLastStep: _stepIndex == _steps.length - 1),
           ],
         ),
       );
+
+
+  Widget _scenarioInitialCallCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.panel,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: .35)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('DIN TUR · första anropet', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          SizedBox(height: 8),
+          Text(
+            'Du är SE-KQX på Kalmar. Anropa Kalmar torn och begär taxi/avgång. Systemet väntar på dig; ATC svarar först när ditt anrop identifierar station, flygplan och avsikt.',
+            style: TextStyle(color: AppTheme.textMuted, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _completionView() {
     final successfulFirstTry = _steps.length - _stepsWithRetry.length;
@@ -748,7 +843,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
               const SizedBox(height: 8),
               Text(
                 _isScenario
-                    ? 'Du har genomfört den första sammanhängande scenariosekvensen. Radiohistorik och anropssignalens status har följt med mellan stegen.'
+                    ? 'Du har genomfört ett stateful miniscenario: du initierade kontakten, ATC svarade utifrån scenarioläget och radiohistorik samt anropssignalens status följde med genom sekvensen.'
                     : 'Du har genomfört ${_steps.length} fristående återläsningsövningar. Varje övning bedöms som en egen mikroövning.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppTheme.textMuted),
@@ -794,6 +889,7 @@ class _ProgressHeader extends StatelessWidget {
     required this.stepIndex,
     required this.count,
     required this.step,
+    required this.awaitingInitialCall,
     required this.compact,
     required this.veryCompact,
   });
@@ -801,12 +897,19 @@ class _ProgressHeader extends StatelessWidget {
   final int stepIndex;
   final int count;
   final TrainingStep step;
+  final bool awaitingInitialCall;
   final bool compact;
   final bool veryCompact;
 
   @override
   Widget build(BuildContext context) {
     final label = mode == PracticeMode.drillReadback ? 'ÖVNING · ÅTERLÄSNING' : 'SCENARIO';
+    final title = awaitingInitialCall ? 'Första anropet' : step.title;
+    final instruction = awaitingInitialCall
+        ? 'Du är SE-KQX på Kalmar. Anropa Kalmar torn och begär taxi/avgång.'
+        : step.instruction;
+    final progressIndex = awaitingInitialCall ? 0 : stepIndex + 1;
+    final progressCount = mode == PracticeMode.scenario ? count + 1 : count;
     return Padding(
       padding: EdgeInsets.fromLTRB(compact ? 10 : 20, 2, compact ? 10 : 20, veryCompact ? 3 : 6),
       child: Column(
@@ -822,19 +925,19 @@ class _ProgressHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
               ],
-              Text('${stepIndex + 1}/$count', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: veryCompact ? 12 : 14)),
+              Text('$progressIndex/$progressCount', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: veryCompact ? 12 : 14)),
               const SizedBox(width: 9),
-              Expanded(child: Text(step.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: veryCompact ? 13 : 14))),
+              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: veryCompact ? 13 : 14))),
             ],
           ),
           if (!veryCompact) ...[
             const SizedBox(height: 4),
-            Text(step.instruction, maxLines: compact ? 1 : 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted)),
+            Text(instruction, maxLines: compact ? 1 : 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted)),
           ],
           SizedBox(height: veryCompact ? 3 : 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(minHeight: veryCompact ? 3 : 5, value: (stepIndex + 1) / count, backgroundColor: AppTheme.panelElevated, color: AppTheme.accent),
+            child: LinearProgressIndicator(minHeight: veryCompact ? 3 : 5, value: progressIndex / progressCount, backgroundColor: AppTheme.panelElevated, color: AppTheme.accent),
           ),
         ],
       ),
@@ -898,7 +1001,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.10.1' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.12.0' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -915,7 +1018,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Test v0.10.1 · Azure A/B', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('v0.12.0 · Scenario Foundation', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

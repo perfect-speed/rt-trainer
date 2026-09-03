@@ -13,6 +13,7 @@ class AtcMessage {
     this.squawk,
     this.contactUnit,
     this.frequency,
+    this.taxiToHoldingPoint = false,
   });
 
   final String callsign;
@@ -21,6 +22,7 @@ class AtcMessage {
   final String? squawk;
   final String? contactUnit;
   final String? frequency;
+  final bool taxiToHoldingPoint;
 
   AtcMessageKind get kind => frequency != null
       ? AtcMessageKind.frequencyChange
@@ -28,7 +30,9 @@ class AtcMessage {
 
   String get normativeText {
     final parts = <String>[callsign];
-    if (runway != null) parts.add('bana $runway');
+    if (runway != null) {
+      parts.add(taxiToHoldingPoint ? 'taxa till väntplats bana $runway' : 'bana $runway');
+    }
     if (qnh != null) parts.add('QNH $qnh');
     if (squawk != null) parts.add('transponder $squawk');
     if (frequency != null) {

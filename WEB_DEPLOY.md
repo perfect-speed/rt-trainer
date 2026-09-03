@@ -1,4 +1,4 @@
-# Web deploy — v0.11.1
+# Web deploy — v0.12.0
 
 From the project root:
 
@@ -6,36 +6,22 @@ From the project root:
 flutter test
 git status
 git add .
-git commit -m "v0.11.1 selective callsign flow"
+git commit -m "v0.12.0 Scenario Foundation"
 git push
 ```
 
-Wait for the Render backend deploy to succeed, then verify:
+Wait for Render and verify:
 
 `https://rt-trainer-api.onrender.com/health`
 
-Expected health markers include:
+Expected: `version: 0.12.0`, `scenarioFoundation: true`.
 
-```json
-{
-  "version": "0.11.1",
-  "speechDefault": "openai-v0.9.2-radio-dsp-pronunciation-chunking",
-  "candidateSpeech": "openai-v0.11.1-selective-callsign-flow-radio-dsp"
-}
-```
-
-Run locally against Render:
-
-```powershell
-flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
-```
-
-For the public GitHub Pages build:
+For GitHub Pages:
 
 ```powershell
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com -RepoName rt-trainer
 git status
 git add .
-git commit -m "Deploy web v0.11.1"
+git commit -m "Deploy web v0.12.0"
 git push
 ```

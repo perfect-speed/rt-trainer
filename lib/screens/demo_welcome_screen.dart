@@ -102,7 +102,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Test v0.11.1 · selektiv anropssignal', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('v0.12.0 · Scenario Foundation', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),
@@ -116,7 +116,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Vi behåller den frysta v0.9.2-rösten. FLOW v0.11.1 använder den förbättrade lokala rytmen endast för anropssignalen. Q N Helge och resten av fraseologin går åter genom v0.9.2-baslinjen. Radio-DSP:n är oförändrad.',
+                      'Syftet med demon är att prova om radioträningen känns naturlig. ATC läses upp som ljud, du svarar med PTT och återkopplingen hjälper dig att upptäcka sak- och fraseologifel.',
                       style: TextStyle(fontSize: 16, height: 1.45),
                     ),
                     const SizedBox(height: 22),

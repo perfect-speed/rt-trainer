@@ -1,20 +1,23 @@
-# RT Trainer v0.11.1 — Selective callsign flow
+# RT Trainer v0.12.0 — Scenario Foundation
 
-## Observation behind the change
+## Design intent
 
-Listening tests of v0.11.0 found a clearer improvement for spelled aircraft registrations (notably SE-MBN), but no clear improvement for Q N Helge.
+The core boundary remains:
 
-## Experimental change
+> World state owns truth. Dialogue logic may choose communicative intent. Phraseology owns normative wording. Speech owns voice and radio presentation, not operational values.
 
-FLOW v0.11.1 therefore applies local prosodic treatment only to the leading spelled callsign. The remainder of the transmission is synthesized through the frozen v0.9.2 baseline function. This means Q N Helge is no longer separately accelerated or independently segmented by the candidate path.
+v0.12.0 shifts effort from speech micro-optimization to **stateful interaction**. The learner is no longer always replying to a pre-existing ATC prompt. In SCENARIO, the session begins in `awaiting initial call`; only a sufficiently identified call moves the world into established contact and causes ATC to respond.
 
-The candidate pipeline is:
+## State represented in this slice
 
-1. Deterministic Swedish RT script.
-2. Detect leading spelled callsign.
-3. Synthesize that callsign as one compact identity group at the v0.11 callsign speed.
-4. Synthesize the remainder with the frozen v0.9.2 baseline pronunciation-chunking path.
-5. Join with the existing short inter-group gap.
-6. Apply the unchanged v0.9 VHF radio DSP to the complete PCM stream.
+- learner callsign: SE-KQX
+- ATS unit: Kalmar tower
+- current frequency
+- contact established / not established
+- whether abbreviated callsign may be used
+- operational values issued by ATC
+- chronological radio-event history
 
-No operational values, phraseology rules, ASR validation rules or radio DSP coefficients are intentionally changed.
+## Non-goals
+
+This version does not yet model channel occupancy, other aircraft, controller workload, mixed Swedish/English traffic, geographic movement, handover acceptance by another ATS unit, or a generative ATC policy. Those are intended to build on this stateful foundation rather than replace it.
