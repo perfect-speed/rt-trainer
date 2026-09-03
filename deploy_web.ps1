@@ -21,5 +21,5 @@ New-Item -ItemType File -Path docs\.nojekyll -Force | Out-Null
 
 Write-Host ""
 Write-Host "Web build copied to docs/."
-Write-Host "Next: git add . ; git commit -m 'Publish RT Trainer v0.9 radio channel experiment' ; git push"
+Write-Host "Next: git add . ; git commit -m 'Add v0.9.1 prosodic chunking experiment' ; git push"
 Write-Host "Expected GitHub Pages URL: https://perfect-speed.github.io/$RepoName/"

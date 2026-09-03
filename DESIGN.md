@@ -1,66 +1,43 @@
-# RT Trainer v0.9.0 — VHF radio-channel experiment
+# RT Trainer v0.9.1 — Prosodic chunking experiment
 
-## Result carried forward from v0.8
+## Question
 
-The five baseline cases produced correct `Q N Helge`, no invented `svara`, and no perceived loss of naturalness compared with the previous Realtime condition. v0.8 is therefore frozen as the speech-architecture baseline.
+Can we improve operational speech flow without giving any generative component authority over the operational content?
+
+The user observed that v0.9 adds useful radio character, but `Q N Helge` can sound like `Q … N … Helge` and spelled registrations can sound like teaching dictation. In actual RT these are familiar lexical/prosodic units and are normally produced with more internal flow.
+
+## Frozen baseline
+
+The following are intentionally unchanged from v0.9.0:
+
+1. deterministic Swedish RT script;
+2. one full-utterance neural TTS call;
+3. v0.9 VHF DSP;
+4. clarified digit words;
+5. frontend PTT, ASR and readback validation.
+
+## Experimental change
+
+Only the TTS prosodic instruction changes.
+
+`Q N Helge` is treated as one cohesive prosodic chunk. The letters remain distinct and Q must remain Swedish Q, but there should be no pedagogical pause between Q, N and Helge.
+
+A full Swedish-spelled callsign is also treated as one identity chunk: clear individual spelling words, but with continuous operational rhythm.
+
+Pauses belong between information groups, not inside these established chunks.
 
 ## Hypothesis
 
-A substantial part of operational radio authenticity can be added *after* correct speech synthesis through a deterministic communication-channel model, without changing phraseology, operational content or the TTS voice.
+**Correctness sits in the representation; naturalness can be improved through grouping and timing.**
 
-This deliberately separates two constructs:
+## Failure criteria
 
-- **linguistic naturalness** — wording, pronunciation, voice and prosody;
-- **radio-operational authenticity** — how that speech is transmitted through a VHF-like channel.
+The experiment fails if any of the following occurs:
 
-## Experimental comparison
+- Q becomes K again;
+- `Q N Helge` loses a component;
+- callsign letters/words are lost or changed;
+- extra lexical material such as `svara` returns;
+- the speech sounds no more fluid, or becomes rushed/less intelligible.
 
-Both conditions start from the same deterministic Swedish RT script and, while the backend instance remains alive, the same cached raw TTS PCM waveform.
-
-### CLEAN — v0.8 baseline
-
-`AtcMessage → deterministic renderer → pronunciation script → TTS PCM → WAV`
-
-### RADIO — v0.9 experimental condition
-
-`AtcMessage → deterministic renderer → pronunciation script → same TTS PCM → VHF DSP → WAV`
-
-The only manipulated variable is post-synthesis channel treatment.
-
-## DSP profile (deliberately mild)
-
-The v0.9 RADIO profile uses:
-
-- approximate 300–3300 Hz speech bandwidth;
-- two gentle low-pass stages;
-- light dynamic compression;
-- soft saturation rather than hard clipping;
-- very low deterministic noise floor;
-- short PTT/carrier onset and squelch-like tail transients.
-
-Noise is seeded from the spoken script so repeated generation is reproducible. Exact replay caching still ensures `LYSSNA IGEN` returns the same accepted waveform.
-
-## What this version does NOT attempt
-
-- no reduced intelligibility or deliberately poor reception;
-- no fading, multipath, interference or blocked transmissions;
-- no multiple radios/voices;
-- no changed phraseology or digit style;
-- no new learner-ASR logic;
-- no state-model or traffic changes.
-
-Those would confound the experiment.
-
-## Test questions
-
-For the same five baseline transmissions:
-
-1. Does RADIO sound more like actual aircraft VHF than CLEAN?
-2. Is intelligibility still fully adequate?
-3. Does the channel treatment make the existing slightly stringent training speech feel more operationally natural, or merely more filtered?
-4. Are PTT/squelch effects subtle enough not to become theatrical?
-5. Does any critical token become harder to hear? If so, that is a failure of the current DSP profile.
-
-## Decision rule
-
-If RADIO improves authenticity without reducing intelligibility, keep channel simulation as a separate deterministic layer. If it merely degrades the audio, revert to CLEAN and adjust or abandon the DSP profile rather than changing the speech architecture.
+If correctness remains stable and internal flow improves, prosodic grouping becomes an explicit layer in the architecture.

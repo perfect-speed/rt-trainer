@@ -1,38 +1,26 @@
-# RT Trainer v0.9.0 – web deployment
+# RT Trainer v0.9.1 – web deployment
 
-## Local test
-
-From the project folder:
+From the project root on Windows:
 
 ```powershell
-flutter pub get
 flutter test
-flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
-```
-
-The default voice chip should show **RADIO · v0.9**. Toggle it to **REN RÖST · v0.8** for the clean A/B reference. The two conditions use the same deterministic Swedish RT script; while the backend instance remains alive they also share the same cached base TTS PCM before v0.9 applies DSP.
-
-## Backend
-
-Push the project and let Render redeploy `server/`. Wait until `rt-trainer-api` is **Live**. Verify `/health` reports:
-
-- `version: 0.9.0`
-- `speechDefault: deterministic-tts-radio-dsp`
-
-## Web build
-
-```powershell
-.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
-```
-
-Then:
-
-```powershell
+git status
 git add .
-git commit -m "Test VHF radio channel DSP against clean v0.8 speech"
+git commit -m "Add v0.9.1 prosodic chunking experiment"
 git push
 ```
 
-GitHub Pages remains:
+Wait until Render has deployed the backend. Its health response should report:
 
-`https://perfect-speed.github.io/rt-trainer/`
+- `version: 0.9.1`
+- `speechDefault: deterministic-tts-radio-dsp-prosodic-chunking`
+
+Then run locally:
+
+```powershell
+flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
+```
+
+The default chip should show **RADIO · v0.9.1**. Listen especially to `Q N Helge` and the full registration. The experiment changes their prosodic grouping only; QNH/callsign values and the v0.9 radio DSP should remain unchanged.
+
+For a public web build, use the existing `deploy_web.ps1`, then commit the regenerated `docs/` directory and push it.

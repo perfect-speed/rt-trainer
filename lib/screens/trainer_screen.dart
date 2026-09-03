@@ -197,7 +197,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.9.0 caches the first synthesized audio for the current exercise and
+    // v0.9.1 caches the first synthesized audio for the current exercise and
     // speech condition. RADIO and CLEAN use the same deterministic spoken script;
     // the backend applies radio-channel DSP only in the RADIO condition.
     // LYSSNA IGEN therefore replays the exact same waveform.
@@ -593,7 +593,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 ChoiceChip(
-                  label: Text(_speechEngine == SpeechEngine.radioDsp ? 'RADIO · v0.9' : 'REN RÖST · v0.8'),
+                  label: Text(_speechEngine == SpeechEngine.radioDsp ? 'RADIO · v0.9.1' : 'REN RÖST · v0.8'),
                   selected: _speechEngine == SpeechEngine.radioDsp,
                   onSelected: _isSpeakingAtc
                       ? null
@@ -874,7 +874,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.9.0' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.9.1' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -891,7 +891,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.9.0 · VHF-radiokanal', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.9.1 · prosodisk gruppering', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],
