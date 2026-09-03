@@ -1,4 +1,4 @@
-# Web deploy — v0.12.0
+# Web deploy — v0.12.1
 
 From the project root:
 
@@ -6,7 +6,7 @@ From the project root:
 flutter test
 git status
 git add .
-git commit -m "v0.12.0 Scenario Foundation"
+git commit -m "v0.12.1 Departure State Machine"
 git push
 ```
 
@@ -14,7 +14,7 @@ Wait for Render and verify:
 
 `https://rt-trainer-api.onrender.com/health`
 
-Expected: `version: 0.12.0`, `scenarioFoundation: true`.
+Expected: `version: 0.12.1`, `scenarioFoundation: true`.
 
 For GitHub Pages:
 
@@ -22,6 +22,6 @@ For GitHub Pages:
 .\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com -RepoName rt-trainer
 git status
 git add .
-git commit -m "Deploy web v0.12.0"
+git commit -m "Deploy web v0.12.1"
 git push
 ```

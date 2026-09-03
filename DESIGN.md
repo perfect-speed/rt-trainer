@@ -1,23 +1,13 @@
-# RT Trainer v0.12.0 — Scenario Foundation
+# RT Trainer v0.12.1 — Departure State Machine
 
-## Design intent
+Scenario mode now models a departure as operational state rather than a scripted list of readbacks.
 
-The core boundary remains:
+States: contact → taxi request → taxi clearance/readback → compressed taxi → holding point → ready report → line-up clearance/readback → compressed line-up → ready-for-departure report → take-off clearance/readback → compressed departure.
 
-> World state owns truth. Dialogue logic may choose communicative intent. Phraseology owns normative wording. Speech owns voice and radio presentation, not operational values.
-
-v0.12.0 shifts effort from speech micro-optimization to **stateful interaction**. The learner is no longer always replying to a pre-existing ATC prompt. In SCENARIO, the session begins in `awaiting initial call`; only a sufficiently identified call moves the world into established contact and causes ATC to respond.
-
-## State represented in this slice
-
-- learner callsign: SE-KQX
-- ATS unit: Kalmar tower
-- current frequency
-- contact established / not established
-- whether abbreviated callsign may be used
-- operational values issued by ATC
-- chronological radio-event history
-
-## Non-goals
-
-This version does not yet model channel occupancy, other aircraft, controller workload, mixed Swedish/English traffic, geographic movement, handover acceptance by another ATS unit, or a generative ATC policy. Those are intended to build on this stateful foundation rather than replace it.
+Principles:
+- Pilot initiates when the operational situation requires a pilot call.
+- ATC responds from world state; it does not advance merely because a drill card was completed.
+- Radio exchanges run at normal time. Non-communicative movement is time-compressed.
+- The visual aircraft position and radio logic are driven by the same departure state.
+- No premature handoff to Sweden Control is included in this slice.
+- OpenAI v0.9.2 radio-DSP speech remains the stable speech baseline.

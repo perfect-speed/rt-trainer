@@ -1099,7 +1099,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.12.0', speechDefault: 'openai-v0.9.2-stable-radio-dsp', scenarioFoundation: true, uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.12.1', speechDefault: 'openai-v0.9.2-stable-radio-dsp', scenarioFoundation: true, uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -1111,7 +1111,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.12.0', scenarioFoundation: true, uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.12.1', scenarioFoundation: true, uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
