@@ -16,7 +16,7 @@ import '../widgets/status_chip.dart';
 
 enum PracticeMode { drillReadback, scenario }
 
-enum SpeechEngine { deterministicTts, realtimeReference }
+enum SpeechEngine { radioDsp, cleanTts }
 
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
@@ -121,7 +121,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.deterministicTts;
+  SpeechEngine _speechEngine = SpeechEngine.radioDsp;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -197,14 +197,12 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.8.0 caches the first synthesized audio for the current exercise and
-    // speech engine. LYSSNA IGEN therefore replays the exact same waveform.
-    // The default engine is deterministic-text TTS; Realtime is retained only
-    // as an A/B reference for naturalness.
+    // v0.9.0 caches the first synthesized audio for the current exercise and
+    // speech condition. RADIO and CLEAN use the same deterministic spoken script;
+    // the backend applies radio-channel DSP only in the RADIO condition.
+    // LYSSNA IGEN therefore replays the exact same waveform.
     final spokenScript = _speechFormatter.format(_step.atcTransmission);
-    final speechText = _speechEngine == SpeechEngine.deterministicTts
-        ? spokenScript
-        : _step.atcTransmission;
+    final speechText = spokenScript;
     final cacheKey = _speechCacheKey(spokenScript);
     setState(() {
       _isSpeakingAtc = true;
@@ -217,7 +215,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
           : await _api.synthesizeSpeech(
               text: speechText,
               spokenText: spokenScript,
-              engine: _speechEngine == SpeechEngine.deterministicTts ? 'deterministic' : 'realtime',
+              engine: _speechEngine == SpeechEngine.radioDsp ? 'radio' : 'clean',
             );
 
       // Cache before playback. If browser autoplay blocks the first play, the
@@ -595,14 +593,14 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 ChoiceChip(
-                  label: Text(_speechEngine == SpeechEngine.deterministicTts ? 'RÖST · v0.8 TTS' : 'RÖST · v0.7 REF'),
-                  selected: _speechEngine == SpeechEngine.deterministicTts,
+                  label: Text(_speechEngine == SpeechEngine.radioDsp ? 'RADIO · v0.9' : 'REN RÖST · v0.8'),
+                  selected: _speechEngine == SpeechEngine.radioDsp,
                   onSelected: _isSpeakingAtc
                       ? null
                       : (_) => setState(() {
-                            _speechEngine = _speechEngine == SpeechEngine.deterministicTts
-                                ? SpeechEngine.realtimeReference
-                                : SpeechEngine.deterministicTts;
+                            _speechEngine = _speechEngine == SpeechEngine.radioDsp
+                                ? SpeechEngine.cleanTts
+                                : SpeechEngine.radioDsp;
                             _speechError = null;
                           }),
                   visualDensity: VisualDensity.compact,
@@ -876,7 +874,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.8.0' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.9.0' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -893,7 +891,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.8.0 · Deterministisk talpipeline', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.9.0 · VHF-radiokanal', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

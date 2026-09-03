@@ -58,7 +58,7 @@ class TrainerApi {
   Future<Uint8List> synthesizeSpeech({
     required String text,
     String? spokenText,
-    String engine = 'deterministic',
+    String engine = 'radio',
   }) async {
     if (!isConfigured) {
       throw StateError('RT_API_URL är inte konfigurerad.');

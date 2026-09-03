@@ -22,6 +22,127 @@ const upload = multer({
 const speechCache = new Map();
 const SPEECH_CACHE_MAX = Number(process.env.RT_SPEECH_CACHE_MAX || '50');
 
+// v0.9.0 radio-channel experiment. The underlying TTS waveform is kept
+// identical between CLEAN and RADIO conditions; RADIO applies only deterministic
+// DSP after synthesis. This isolates the effect of channel simulation from voice,
+// wording and prosody.
+const baseTtsPcmCache = new Map();
+const BASE_TTS_PCM_CACHE_MAX = Number(process.env.RT_BASE_TTS_PCM_CACHE_MAX || '30');
+
+function baseTtsPcmKey(spokenText) {
+  return spokenText || '';
+}
+
+function rememberBaseTtsPcm(key, pcm) {
+  if (baseTtsPcmCache.has(key)) baseTtsPcmCache.delete(key);
+  baseTtsPcmCache.set(key, pcm);
+  while (baseTtsPcmCache.size > BASE_TTS_PCM_CACHE_MAX) {
+    const oldest = baseTtsPcmCache.keys().next().value;
+    baseTtsPcmCache.delete(oldest);
+  }
+}
+
+function hash32(text) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h || 1;
+}
+
+function seededRandom(seedText) {
+  let state = hash32(seedText);
+  return () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return ((state >>> 0) / 4294967296);
+  };
+}
+
+function clamp16(value) {
+  return Math.max(-32768, Math.min(32767, Math.round(value)));
+}
+
+function createRadioEdgeNoise(durationMs, sampleRate, random, { clickAtStart = false, clickAtEnd = false } = {}) {
+  const samples = Math.max(1, Math.round(sampleRate * durationMs / 1000));
+  const out = Buffer.alloc(samples * 2);
+  let previousNoise = 0;
+  for (let i = 0; i < samples; i += 1) {
+    const white = (random() * 2 - 1);
+    previousNoise = 0.72 * previousNoise + 0.28 * white;
+    let x = previousNoise * 520;
+    const t = i / sampleRate;
+    if (clickAtStart && i < Math.round(sampleRate * 0.008)) {
+      const env = 1 - i / Math.max(1, Math.round(sampleRate * 0.008));
+      x += Math.sin(2 * Math.PI * 1150 * t) * 1600 * env;
+    }
+    if (clickAtEnd && i > samples - Math.round(sampleRate * 0.012)) {
+      const fromEnd = samples - 1 - i;
+      const env = 1 - fromEnd / Math.max(1, Math.round(sampleRate * 0.012));
+      x += Math.sin(2 * Math.PI * 900 * t) * 1050 * Math.max(0, env);
+    }
+    out.writeInt16LE(clamp16(x), i * 2);
+  }
+  return out;
+}
+
+function applyVhfRadioDsp(pcm, seedText, sampleRate = 24000) {
+  if (!Buffer.isBuffer(pcm) || pcm.length < 4) return pcm;
+  const sampleCount = Math.floor(pcm.length / 2);
+  const processed = Buffer.alloc(sampleCount * 2);
+
+  // Approximate narrow VHF voice channel: ~300–3300 Hz. Two cascaded low-pass
+  // sections give a gentle but clearly audible bandwidth limitation without
+  // making the training audio unnecessarily harsh.
+  const dt = 1 / sampleRate;
+  const hpRc = 1 / (2 * Math.PI * 300);
+  const hpAlpha = hpRc / (hpRc + dt);
+  const lpRc = 1 / (2 * Math.PI * 3300);
+  const lpAlpha = dt / (lpRc + dt);
+  let hpPrevX = 0;
+  let hpPrevY = 0;
+  let lp1 = 0;
+  let lp2 = 0;
+  let envelope = 0;
+  const attack = Math.exp(-1 / (sampleRate * 0.004));
+  const release = Math.exp(-1 / (sampleRate * 0.090));
+  const threshold = 0.30;
+  const ratio = 3.0;
+  const random = seededRandom(`rt-v090|${seedText}`);
+
+  for (let i = 0; i < sampleCount; i += 1) {
+    const x = pcm.readInt16LE(i * 2) / 32768;
+    const hp = hpAlpha * (hpPrevY + x - hpPrevX);
+    hpPrevX = x;
+    hpPrevY = hp;
+    lp1 += lpAlpha * (hp - lp1);
+    lp2 += lpAlpha * (lp1 - lp2);
+
+    const abs = Math.abs(lp2);
+    envelope = abs > envelope
+      ? attack * envelope + (1 - attack) * abs
+      : release * envelope + (1 - release) * abs;
+    let gain = 1;
+    if (envelope > threshold) {
+      const compressed = threshold + (envelope - threshold) / ratio;
+      gain = compressed / Math.max(envelope, 1e-6);
+    }
+
+    // Very light deterministic carrier/noise floor. Keep it subtle: this
+    // experiment tests channel character, not intentionally poor readability.
+    const noise = (random() * 2 - 1) * 0.0033;
+    const driven = (lp2 * gain * 1.42) + noise;
+    const soft = Math.tanh(driven * 1.28) / Math.tanh(1.28);
+    processed.writeInt16LE(clamp16(soft * 32767 * 0.88), i * 2);
+  }
+
+  const lead = createRadioEdgeNoise(42, sampleRate, random, { clickAtStart: true });
+  const tail = createRadioEdgeNoise(58, sampleRate, random, { clickAtEnd: true });
+  return Buffer.concat([lead, processed, tail]);
+}
+
 function speechCacheKey(engine, text, spokenText) {
   return `${engine}\u241f${text}\u241f${spokenText || ''}`;
 }
@@ -492,7 +613,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.8.0-realtime-reference',
+              purpose: 'rt-trainer-v0.9.0-realtime-reference',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -781,7 +902,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               `NORMATIV REFERENS (ändra inget): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.8.0-realtime-reference', attempt: String(attempt) },
+            metadata: { purpose: 'rt-trainer-v0.9.0-realtime-reference', attempt: String(attempt) },
           },
         }));
         return;
@@ -937,7 +1058,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.8.0', speechDefault: 'deterministic-tts', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.9.0', speechDefault: 'deterministic-tts-radio-dsp', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -949,7 +1070,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.8.0', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.9.0', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -992,6 +1113,35 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
+
+async function getDeterministicBaseTtsPcm(spokenText) {
+  const key = baseTtsPcmKey(spokenText);
+  const cached = baseTtsPcmCache.get(key);
+  if (cached) return { pcm: cached, cache: 'HIT' };
+
+  const speech = await client.audio.speech.create({
+    model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+    voice: process.env.OPENAI_TTS_VOICE || 'cedar',
+    input: spokenText,
+    speed: Number(process.env.OPENAI_TTS_SPEED || '1.04'),
+    instructions: [
+      'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
+      'Detta är ett deterministiskt radiotelefonimanus. Läs exakt orden i manuset i samma ordning.',
+      'Lägg aldrig till ord som svara, kod, ställ in, sätt, bekräfta eller andra hjälpord.',
+      'Ändra aldrig anropssignal, bana, QNH-värde, frekvens eller transponderkod.',
+      'När manuset innehåller Q N Helge: uttala bokstaven Q på svenska, därefter N, därefter ordet Helge. Det får inte låta som K N Helge eller K N H.',
+      'Svenska bokstaveringsord ska sägas tydligt men som en sammanhållen flygradioanropssignal, inte som pedagogisk diktamen.',
+      'Sifferord ska vara tydliga, kompakta och rytmiska. Slutför alltid sista siffran.',
+      'Använd naturlig, professionell ATC-prosodi med korta funktionella pauser mellan informationsgrupper.',
+    ].join(' '),
+    response_format: 'pcm',
+  });
+  const pcm = Buffer.from(await speech.arrayBuffer());
+  if (!pcm.length) throw new Error('Deterministic TTS returned no audio.');
+  rememberBaseTtsPcm(key, pcm);
+  return { pcm, cache: 'MISS' };
+}
+
 app.post('/api/speech', async (req, res) => {
   const requestStartedAt = Date.now();
   const requestId = Math.random().toString(36).slice(2, 9);
@@ -1004,8 +1154,10 @@ app.post('/api/speech', async (req, res) => {
   }
 
   const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
-  const requestedEngine = String(req.body?.engine || 'deterministic');
-  const engine = requestedEngine === 'realtime' ? 'realtime' : 'deterministic';
+  const requestedEngine = String(req.body?.engine || 'radio');
+  const engine = requestedEngine === 'realtime'
+    ? 'realtime'
+    : (requestedEngine === 'deterministic' || requestedEngine === 'clean' ? 'clean' : 'radio');
   const spokenText = typeof req.body?.spokenText === 'string' ? req.body.spokenText.trim().slice(0, 800) : '';
   if (!text) {
     return res.status(400).json({ error: 'Speech text missing.' });
@@ -1030,43 +1182,31 @@ app.post('/api/speech', async (req, res) => {
       return res.send(cached.buffer);
     }
 
-    if (engine === 'deterministic') {
+    if (engine === 'radio' || engine === 'clean') {
       if (!spokenText) return res.status(400).json({ error: 'Deterministic spoken RT script missing.' });
 
-      // v0.8.0 architecture experiment: one deterministic phraseology/pronunciation
-      // script is synthesized in one TTS call. The speech model may realize voice
-      // and prosody, but it receives no authority to select operational values or
-      // add controller wording. Realtime remains available only as an A/B reference.
-      const speech = await client.audio.speech.create({
-        model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
-        voice: process.env.OPENAI_TTS_VOICE || 'cedar',
-        input: spokenText,
-        speed: Number(process.env.OPENAI_TTS_SPEED || '1.04'),
-        instructions: [
-          'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
-          'Detta är ett deterministiskt radiotelefonimanus. Läs exakt orden i manuset i samma ordning.',
-          'Lägg aldrig till ord som svara, kod, ställ in, sätt, bekräfta eller andra hjälpord.',
-          'Ändra aldrig anropssignal, bana, QNH-värde, frekvens eller transponderkod.',
-          'När manuset innehåller Q N Helge: uttala bokstaven Q på svenska, därefter N, därefter ordet Helge. Det får inte låta som K N Helge eller K N H.',
-          'Svenska bokstaveringsord ska sägas tydligt men som en sammanhållen flygradioanropssignal, inte som pedagogisk diktamen.',
-          'Sifferord ska vara tydliga, kompakta och rytmiska. Slutför alltid sista siffran.',
-          'Använd naturlig, professionell ATC-prosodi med korta funktionella pauser mellan informationsgrupper.',
-        ].join(' '),
-        response_format: 'mp3',
-      });
+      // v0.9.0 isolates radio-channel authenticity from speech generation.
+      // CLEAN and RADIO share the exact same base TTS PCM whenever the Render
+      // process remains alive; RADIO then applies deterministic post-synthesis DSP.
+      const base = await getDeterministicBaseTtsPcm(spokenText);
+      const outputPcm = engine === 'radio'
+        ? applyVhfRadioDsp(base.pcm, spokenText, 24000)
+        : base.pcm;
+      const buffer = pcm16ToWav(outputPcm, 24000, 1);
+      const engineName = engine === 'radio' ? 'deterministic-tts-radio-dsp' : 'deterministic-tts-clean';
 
-      const buffer = Buffer.from(await speech.arrayBuffer());
-      if (!buffer.length) throw new Error('Deterministic TTS returned no audio.');
-      rememberSpeech(cacheKey, { buffer, contentType: 'audio/mpeg', engine: 'deterministic-tts', fallback: false });
-      res.setHeader('Content-Type', 'audio/mpeg');
+      rememberSpeech(cacheKey, { buffer, contentType: 'audio/wav', engine: engineName, fallback: false });
+      res.setHeader('Content-Type', 'audio/wav');
       res.setHeader('Cache-Control', 'private, max-age=3600');
-      res.setHeader('X-RT-Speech-Engine', 'deterministic-tts');
+      res.setHeader('X-RT-Speech-Engine', engineName);
       res.setHeader('X-RT-Speech-Fallback', '0');
       res.setHeader('X-RT-Speech-Cache', 'MISS');
+      res.setHeader('X-RT-Base-TTS-Cache', base.cache);
       console.info('Speech request timing', {
         requestId,
         cache: 'MISS',
-        engine: 'deterministic-tts',
+        baseTtsCache: base.cache,
+        engine: engineName,
         fallback: false,
         script: spokenText,
         uptimeSeconds: Math.round(process.uptime()),

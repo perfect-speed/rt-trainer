@@ -1,13 +1,20 @@
-# RT Trainer v0.8.0
+# RT Trainer v0.9.0
 
 Experimental Swedish PPL radiotelephony trainer.
 
-v0.8.0 is an architecture experiment prompted by the v0.6–v0.7 speech-control trade-off. The default ATC speech path no longer uses Realtime speech-to-speech generation. Operational content is represented as typed `AtcMessage` data, rendered deterministically to normative phraseology, converted to a Swedish RT pronunciation script, and synthesized in one neural-TTS call.
+v0.9.0 freezes the successful v0.8 deterministic speech architecture and tests a new question: how much of the perceived "real radio" feeling comes from the communication channel rather than from the voice model itself?
 
 The default pipeline is:
 
-`typed operational message → deterministic phraseology → pronunciation representation → single-call TTS → audio`
+`typed operational message → deterministic phraseology → pronunciation representation → single-call TTS → deterministic VHF-style DSP → audio`
 
-Realtime whole-utterance speech is retained only as an A/B reference for naturalness. The first experiment asks whether deterministic wording plus neural TTS can preserve critical values and the Swedish `Q N Helge` expression without returning to the mechanical segmented speech of v0.6.x.
+The speech content, TTS model, voice, speed and prompt are deliberately unchanged from the v0.8 baseline. The new RADIO condition only post-processes the synthesized 24 kHz PCM waveform with a light VHF-style channel model: bandwidth limiting, gentle compression/soft clipping, a low deterministic noise floor, and short PTT/squelch edge transients.
 
-Warm-up and exact replay caching remain enabled. Learner ASR and the deterministic readback validator are intentionally unchanged in this version.
+The UI provides an A/B condition:
+
+- **RADIO · v0.9** — v0.8 speech plus channel DSP (default)
+- **REN RÖST · v0.8** — the same underlying clean TTS waveform without DSP
+
+Within one live backend process, both conditions reuse the same cached base TTS PCM for a given spoken script. This makes the comparison much cleaner: wording, controller voice and prosody are held constant while only the channel treatment changes.
+
+Learner ASR, deterministic readback validation, warm-up, scenario/drill structure and exact replay caching remain unchanged.

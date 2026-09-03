@@ -1,46 +1,66 @@
-# RT Trainer v0.8.0 — deterministic speech pipeline experiment
+# RT Trainer v0.9.0 — VHF radio-channel experiment
+
+## Result carried forward from v0.8
+
+The five baseline cases produced correct `Q N Helge`, no invented `svara`, and no perceived loss of naturalness compared with the previous Realtime condition. v0.8 is therefore frozen as the speech-architecture baseline.
 
 ## Hypothesis
 
-A typed operational message plus deterministic phraseology/pronunciation rendering and a single full-utterance neural-TTS call can improve normative/acoustic reliability without the loss of naturalness caused by segmented speech generation.
+A substantial part of operational radio authenticity can be added *after* correct speech synthesis through a deterministic communication-channel model, without changing phraseology, operational content or the TTS voice.
 
-## Architectural boundary under test
+This deliberately separates two constructs:
 
-- Scenario/typed message owns operational values.
-- Deterministic renderer owns normative wording.
-- Pronunciation representation owns aviation-specific spoken forms.
-- Neural TTS owns voice and prosody, but is not asked to choose operational content.
-- Realtime speech-to-speech is retained only as a reference condition.
+- **linguistic naturalness** — wording, pronunciation, voice and prosody;
+- **radio-operational authenticity** — how that speech is transmitted through a VHF-like channel.
 
-## Default speech path
+## Experimental comparison
 
-`AtcMessage → normativeText → SwedishRtSpeechFormatter → gpt-4o-mini-tts → cached waveform`
+Both conditions start from the same deterministic Swedish RT script and, while the backend instance remains alive, the same cached raw TTS PCM waveform.
 
-The entire utterance is synthesized in one call. There is no token-level audio splicing and no ASR judge in the default path.
+### CLEAN — v0.8 baseline
 
-## Critical-token test set
+`AtcMessage → deterministic renderer → pronunciation script → TTS PCM → WAV`
 
-The current five drills deliberately stress:
+### RADIO — v0.9 experimental condition
 
-- full Swedish callsigns and spelling words;
-- runway designators;
-- `Q N Helge` and QNH values;
-- frequencies;
-- four-digit transponder codes;
-- final-digit completion;
-- absence of invented helper words such as `svara`.
+`AtcMessage → deterministic renderer → pronunciation script → same TTS PCM → VHF DSP → WAV`
 
-## Important limitation
+The only manipulated variable is post-synthesis channel treatment.
 
-OpenAI's current TTS interface provides text plus voice/instructions, but this implementation does not have a true phoneme/lexicon API. Therefore v0.8.0 tests whether deterministic text/pronunciation representation is sufficient with the current TTS engine. If `Q N Helge` remains acoustically unreliable, that is evidence to test a TTS engine with explicit phoneme/pronunciation controls rather than adding more Realtime prompt guards.
+## DSP profile (deliberately mild)
 
-## What is deliberately unchanged
+The v0.9 RADIO profile uses:
 
-- Flutter UI and PTT workflow;
-- learner ASR;
-- readback validation;
-- scenario/drill structure;
-- warm-up;
-- exact replay cache.
+- approximate 300–3300 Hz speech bandwidth;
+- two gentle low-pass stages;
+- light dynamic compression;
+- soft saturation rather than hard clipping;
+- very low deterministic noise floor;
+- short PTT/carrier onset and squelch-like tail transients.
 
-This keeps the experiment focused on the ATC speech-production architecture.
+Noise is seeded from the spoken script so repeated generation is reproducible. Exact replay caching still ensures `LYSSNA IGEN` returns the same accepted waveform.
+
+## What this version does NOT attempt
+
+- no reduced intelligibility or deliberately poor reception;
+- no fading, multipath, interference or blocked transmissions;
+- no multiple radios/voices;
+- no changed phraseology or digit style;
+- no new learner-ASR logic;
+- no state-model or traffic changes.
+
+Those would confound the experiment.
+
+## Test questions
+
+For the same five baseline transmissions:
+
+1. Does RADIO sound more like actual aircraft VHF than CLEAN?
+2. Is intelligibility still fully adequate?
+3. Does the channel treatment make the existing slightly stringent training speech feel more operationally natural, or merely more filtered?
+4. Are PTT/squelch effects subtle enough not to become theatrical?
+5. Does any critical token become harder to hear? If so, that is a failure of the current DSP profile.
+
+## Decision rule
+
+If RADIO improves authenticity without reducing intelligibility, keep channel simulation as a separate deterministic layer. If it merely degrades the audio, revert to CLEAN and adjust or abandon the DSP profile rather than changing the speech architecture.
