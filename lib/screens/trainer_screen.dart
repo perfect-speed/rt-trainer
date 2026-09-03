@@ -701,10 +701,22 @@ class _TrainerScreenState extends State<TrainerScreen> {
               ),
               const SizedBox(height: 8),
             ],
-            _pttButton(),
-            _voiceStatus(),
-            SizedBox(height: veryCompact ? 6 : 10),
-            ReadbackCard(result: _result, onNext: _result?.isComplete == true ? _nextStep : null, isLastStep: _stepIndex == _steps.length - 1),
+            if (_result?.isComplete != true) ...[
+              _pttButton(),
+              _voiceStatus(),
+              SizedBox(height: veryCompact ? 6 : 10),
+            ] else ...[
+              FilledButton.icon(
+                onPressed: _nextStep,
+                icon: Icon(_stepIndex == _steps.length - 1 ? Icons.flag_outlined : Icons.arrow_forward),
+                label: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(_stepIndex == _steps.length - 1 ? 'SLUTFÖR ÖVNINGEN' : 'NÄSTA'),
+                ),
+              ),
+              SizedBox(height: veryCompact ? 6 : 10),
+            ],
+            ReadbackCard(result: _result, onNext: null, isLastStep: _stepIndex == _steps.length - 1),
           ],
         ),
       );
