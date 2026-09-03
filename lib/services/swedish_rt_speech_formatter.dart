@@ -74,7 +74,7 @@ class SwedishRtSpeechFormatter {
 
     text = text.replaceAllMapped(
       RegExp(r'\bQNH\s+(\d{3,4})\b', caseSensitive: false),
-      (match) => 'ku enn Helge ${_spellDigits(match.group(1)!)}',
+      (match) => 'Q N Helge ${_spellDigits(match.group(1)!)}',
     );
 
     text = text.replaceAllMapped(
@@ -89,12 +89,10 @@ class SwedishRtSpeechFormatter {
 
     // If QNH appears without a value, still force the Swedish aviation
     // pronunciation rather than leaving the acronym to a generic TTS model.
-    // The lower-case pronunciation cue is deliberate: generic TTS otherwise
-    // tends to separate Q and N too much. In Swedish RT this is intended to
-    // sound as the compact Swedish RT expression 'Q N Helge'. The internal
-    // acoustic cue 'ku enn Helge' is intentionally pronunciation-oriented;
-    // the normative scenario text remains QNH and is never changed.
-    text = text.replaceAll(RegExp(r'\bQNH\b', caseSensitive: false), 'ku enn Helge');
+    // v0.8.0 keeps the normative label QNH in scenario state but renders the
+    // explicit Swedish RT pronunciation representation 'Q N Helge' for TTS.
+    // This experiment deliberately avoids Realtime speech-to-speech generation.
+    text = text.replaceAll(RegExp(r'\bQNH\b', caseSensitive: false), 'Q N Helge');
 
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }

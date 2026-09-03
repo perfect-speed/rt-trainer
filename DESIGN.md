@@ -1,38 +1,46 @@
-# RT Trainer v0.7.1 — QNH pronunciation stabilization
+# RT Trainer v0.8.0 — deterministic speech pipeline experiment
 
-## Design hypothesis
+## Hypothesis
 
-Recover the natural whole-utterance prosody seen in v0.6.0 while retaining the reliability work learned in v0.6.x.
+A typed operational message plus deterministic phraseology/pronunciation rendering and a single full-utterance neural-TTS call can improve normative/acoustic reliability without the loss of naturalness caused by segmented speech generation.
 
-**Scenario/world state owns reality. Realtime owns expression. Validation decides whether an expression is accepted.**
+## Architectural boundary under test
 
-### Speech path
+- Scenario/typed message owns operational values.
+- Deterministic renderer owns normative wording.
+- Pronunciation representation owns aviation-specific spoken forms.
+- Neural TTS owns voice and prosody, but is not asked to choose operational content.
+- Realtime speech-to-speech is retained only as a reference condition.
 
-1. Flutter derives the deterministic Swedish spoken script from the normative ATC transmission.
-2. Realtime generates the complete ATC transmission as one utterance — no segmented synthesis.
-3. Realtime's output transcript must canonicalize to the exact spoken script. Extra words such as `svara` therefore reject the take.
-4. A separate ASR pass listens to the actual waveform and verifies the hard operational payload (all digit sequences and, when confidently reconstructed, callsign). It does not reject acoustically ambiguous Q/K spelling in `Q N Helge`.
-5. Rejected takes are regenerated as complete natural utterances, up to three attempts.
-6. If all natural takes fail, deterministic TTS remains the no-sound safety fallback.
-7. Accepted audio is cached; `LYSSNA IGEN` replays the exact same waveform with no network call.
+## Default speech path
 
-### Preserved from v0.6.10
+`AtcMessage → normativeText → SwedishRtSpeechFormatter → gpt-4o-mini-tts → cached waveform`
 
-- Render warm-up before the first exercise.
-- Stable configured controller voice.
-- Client and server audio caching.
-- Retry handling for transient backend errors.
-- Detailed latency diagnostics.
+The entire utterance is synthesized in one call. There is no token-level audio splicing and no ASR judge in the default path.
 
-### What v0.7.0 deliberately removes
+## Critical-token test set
 
-- Segment-by-segment generation.
-- Segment joins and per-segment prosody micromanagement.
-- The assumption that more generation constraints automatically improve the learner experience.
+The current five drills deliberately stress:
 
-The new control principle is: **control acceptance, not prosody.**
+- full Swedish callsigns and spelling words;
+- runway designators;
+- `Q N Helge` and QNH values;
+- frequencies;
+- four-digit transponder codes;
+- final-digit completion;
+- absence of invented helper words such as `svara`.
 
+## Important limitation
 
-## v0.7.1 change
+OpenAI's current TTS interface provides text plus voice/instructions, but this implementation does not have a true phoneme/lexicon API. Therefore v0.8.0 tests whether deterministic text/pronunciation representation is sufficient with the current TTS engine. If `Q N Helge` remains acoustically unreliable, that is evidence to test a TTS engine with explicit phoneme/pronunciation controls rather than adding more Realtime prompt guards.
 
-The whole-utterance architecture is unchanged. Only the speech-realization form for the fixed QNH label changes from the ambiguous graphemic cue `Q N Helge` to the acoustic Swedish cue `ku enn Helge`. The normative world-state representation remains `QNH`; validators still compare operational values independently. This isolates pronunciation tuning from phraseology and scenario truth.
+## What is deliberately unchanged
+
+- Flutter UI and PTT workflow;
+- learner ASR;
+- readback validation;
+- scenario/drill structure;
+- warm-up;
+- exact replay cache.
+
+This keeps the experiment focused on the ATC speech-production architecture.

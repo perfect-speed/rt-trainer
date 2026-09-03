@@ -16,7 +16,7 @@ import '../widgets/status_chip.dart';
 
 enum PracticeMode { drillReadback, scenario }
 
-enum SpeechEngine { realtime, ttsBaseline }
+enum SpeechEngine { deterministicTts, realtimeReference }
 
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
@@ -41,7 +41,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       id: 'RB01',
       title: 'Grundläggande återläsning',
       instruction: 'Fristående övning: läs tillbaka bana, QNH, transponderkod och anropssignal.',
-      atcTransmission: 'SE-KQX, bana 01, QNH 1016, transponder 4255.',
+      atcMessage: AtcMessage(callsign: 'SE-KQX', runway: '01', qnh: '1016', squawk: '4255'),
       expected: ExpectedReadback(callsign: 'SE-KQX', runway: '01', qnh: '1016', squawk: '4255'),
       coachNote: 'Detta är en mikroövning. Tidigare radiotrafik modelleras inte.',
     ),
@@ -49,21 +49,21 @@ class _TrainerScreenState extends State<TrainerScreen> {
       id: 'RB02',
       title: 'Ny QNH och transponderkod',
       instruction: 'Värdena ändras. Läs tillbaka exakt de objekt som gavs.',
-      atcTransmission: 'SE-GLA, QNH 1018, transponder 4261.',
+      atcMessage: AtcMessage(callsign: 'SE-GLA', qnh: '1018', squawk: '4261'),
       expected: ExpectedReadback(callsign: 'SE-GLA', qnh: '1018', squawk: '4261'),
     ),
     TrainingStep(
       id: 'RB03',
       title: 'Bana och QNH',
       instruction: 'Denna gång finns inget krav på transponderkod. Läs bara tillbaka det som faktiskt gavs.',
-      atcTransmission: 'SE-VPT, bana 19, QNH 1009.',
+      atcMessage: AtcMessage(callsign: 'SE-VPT', runway: '19', qnh: '1009'),
       expected: ExpectedReadback(callsign: 'SE-VPT', runway: '19', qnh: '1009'),
     ),
     TrainingStep(
       id: 'RB04',
       title: 'Frekvensbyte',
       instruction: 'Läs tillbaka den nya frekvensen och anropssignalen.',
-      atcTransmission: 'SE-MBN, kontakta Sweden Control 124.725.',
+      atcMessage: AtcMessage(callsign: 'SE-MBN', contactUnit: 'Sweden Control', frequency: '124.725'),
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-MBN', frequency: '124.725'),
     ),
@@ -71,7 +71,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       id: 'RB05',
       title: 'Kombinerad återläsning',
       instruction: 'Längre transmission. Prioritera korrekt innehåll framför hastighet.',
-      atcTransmission: 'SE-RYD, bana 01, QNH 1013, transponder 4272.',
+      atcMessage: AtcMessage(callsign: 'SE-RYD', runway: '01', qnh: '1013', squawk: '4272'),
       expected: ExpectedReadback(callsign: 'SE-RYD', runway: '01', qnh: '1013', squawk: '4272'),
     ),
   ];
@@ -83,7 +83,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
       id: 'SC01',
       title: 'Etablerad kontakt',
       instruction: 'Du är SE-KQX. Kontakten är etablerad och du taxar för avgång. Läs tillbaka ATC.',
-      atcTransmission: 'SE-KQX, bana 19, QNH 1009.',
+      atcMessage: AtcMessage(callsign: 'SE-KQX', runway: '19', qnh: '1009'),
       expected: ExpectedReadback(callsign: 'SE-KQX', runway: '19', qnh: '1009'),
       coachNote: 'Scenario: tidigare tillstånd finns kvar när du går vidare.',
     ),
@@ -91,14 +91,14 @@ class _TrainerScreenState extends State<TrainerScreen> {
       id: 'SC02',
       title: 'ATC förkortar anropssignalen',
       instruction: 'ATC har nu introducerat den förkortade anropssignalen. Full eller korrekt förkortad form accepteras.',
-      atcTransmission: 'S-QX, transponder 4261.',
+      atcMessage: AtcMessage(callsign: 'S-QX', squawk: '4261'),
       expected: ExpectedReadback(callsign: 'SE-KQX', squawk: '4261', allowAbbreviatedCallsign: true),
     ),
     TrainingStep(
       id: 'SC03',
       title: 'Frekvensbyte',
       instruction: 'Kommunikationen fortsätter i samma scenario. Läs tillbaka frekvensen.',
-      atcTransmission: 'S-QX, kontakta Sweden Control 124.725.',
+      atcMessage: AtcMessage(callsign: 'S-QX', contactUnit: 'Sweden Control', frequency: '124.725'),
       frequency: '124.500',
       expected: ExpectedReadback(callsign: 'SE-KQX', frequency: '124.725', allowAbbreviatedCallsign: true),
     ),
@@ -121,7 +121,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.realtime;
+  SpeechEngine _speechEngine = SpeechEngine.deterministicTts;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -197,13 +197,14 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.7.1 caches the first accepted audio for the current exercise and
-    // speech engine. LYSSNA IGEN therefore replays the exact same waveform:
-    // no new voice, no new generative wording, and no network wait.
+    // v0.8.0 caches the first synthesized audio for the current exercise and
+    // speech engine. LYSSNA IGEN therefore replays the exact same waveform.
+    // The default engine is deterministic-text TTS; Realtime is retained only
+    // as an A/B reference for naturalness.
     final spokenScript = _speechFormatter.format(_step.atcTransmission);
-    final speechText = _speechEngine == SpeechEngine.realtime
-        ? _step.atcTransmission
-        : spokenScript;
+    final speechText = _speechEngine == SpeechEngine.deterministicTts
+        ? spokenScript
+        : _step.atcTransmission;
     final cacheKey = _speechCacheKey(spokenScript);
     setState(() {
       _isSpeakingAtc = true;
@@ -215,8 +216,8 @@ class _TrainerScreenState extends State<TrainerScreen> {
           ? Uint8List.fromList(cached)
           : await _api.synthesizeSpeech(
               text: speechText,
-              spokenText: _speechEngine == SpeechEngine.realtime ? spokenScript : null,
-              engine: _speechEngine == SpeechEngine.realtime ? 'realtime' : 'tts',
+              spokenText: spokenScript,
+              engine: _speechEngine == SpeechEngine.deterministicTts ? 'deterministic' : 'realtime',
             );
 
       // Cache before playback. If browser autoplay blocks the first play, the
@@ -594,14 +595,14 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 ChoiceChip(
-                  label: Text(_speechEngine == SpeechEngine.realtime ? 'RÖST · REALTIME' : 'RÖST · TTS BAS'),
-                  selected: _speechEngine == SpeechEngine.realtime,
+                  label: Text(_speechEngine == SpeechEngine.deterministicTts ? 'RÖST · v0.8 TTS' : 'RÖST · v0.7 REF'),
+                  selected: _speechEngine == SpeechEngine.deterministicTts,
                   onSelected: _isSpeakingAtc
                       ? null
                       : (_) => setState(() {
-                            _speechEngine = _speechEngine == SpeechEngine.realtime
-                                ? SpeechEngine.ttsBaseline
-                                : SpeechEngine.realtime;
+                            _speechEngine = _speechEngine == SpeechEngine.deterministicTts
+                                ? SpeechEngine.realtimeReference
+                                : SpeechEngine.deterministicTts;
                             _speechError = null;
                           }),
                   visualDensity: VisualDensity.compact,
@@ -875,7 +876,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                veryCompact ? 'RT TRAINER · v0.7.1' : 'RT TRAINER',
+                veryCompact ? 'RT TRAINER · v0.8.0' : 'RT TRAINER',
                 style: TextStyle(fontSize: veryCompact ? 14 : 16, fontWeight: FontWeight.w800, letterSpacing: .6),
               ),
             ),
@@ -892,7 +893,7 @@ class _Header extends StatelessWidget {
           Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.flight, color: AppTheme.background)),
           const SizedBox(width: 11),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.7.1 · Träning i radiotelefoni', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('RT TRAINER', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .8)), Text('Demo v0.8.0 · Deterministisk talpipeline', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
           ),
           modeSelector,
         ],

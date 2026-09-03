@@ -1,44 +1,38 @@
-# RT Trainer v0.7.1 – web deployment
+# RT Trainer v0.8.0 – web deployment
 
-## 1. Test Flutter source
+## Local test
+
+From the project folder:
 
 ```powershell
+flutter pub get
 flutter test
-```
-
-## 2. Push source/backend
-
-```powershell
-git add .
-git commit -m "Add backend warmup and speech latency diagnostics"
-git push
-```
-
-Wait until Render `rt-trainer-api` is **Live**. Verify `/health` reports `version: 0.7.1`.
-
-## 3. Verify locally against Render
-
-```powershell
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-For the latency test, let Render become idle before one trial if possible. Open the welcome screen and note whether it shows `Röstserver klar.` before pressing **STARTA DEMO**. Then compare:
+The default voice chip should show **RÖST · v0.8 TTS**. The alternate **RÖST · v0.7 REF** condition is kept only for A/B listening.
 
-- time from STARTA DEMO to first SE-KQX audio;
-- subsequent case latency;
-- SE-GLA and SE-RYD callsign rhythm;
-- immediate/identical `LYSSNA IGEN` replay.
+## Backend
 
-In Render logs inspect `Warm-up ping`, `Speech request received`, `Realtime segment diagnostic`, and `Speech request timing`.
+Push the project and let Render redeploy `server/`. Wait until `rt-trainer-api` is **Live**. Verify `/health` reports:
 
-## 4. Build GitHub Pages after local verification
+- `version: 0.8.0`
+- `speechDefault: deterministic-tts`
+
+## Web build
 
 ```powershell
-.\deploy_web.ps1 -BackendUrl https://rt-trainer-api.onrender.com
+.\deploy_web.ps1
+```
 
-git add docs
-git commit -m "Build RT Trainer v0.7.1 web"
+Then:
+
+```powershell
+git add .
+git commit -m "Test deterministic ATC speech pipeline"
 git push
 ```
 
-Expected URL: `https://perfect-speed.github.io/rt-trainer/`
+GitHub Pages remains:
+
+`https://perfect-speed.github.io/rt-trainer/`

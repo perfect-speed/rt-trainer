@@ -1,15 +1,13 @@
-# RT Trainer v0.7.1
+# RT Trainer v0.8.0
 
-Experimental Swedish PPL radiotelephony trainer. v0.7.1 keeps the natural whole-utterance architecture from v0.7.0 and stabilizes the Swedish QNH pronunciation. The normative scenario still stores `QNH`; only the internal speech-realization layer uses the acoustic cue `ku enn Helge` so Realtime is less likely to produce `KN Helge`. Warm-up, post-validation and exact replay caching are unchanged.
+Experimental Swedish PPL radiotelephony trainer.
 
-Run locally against the deployed backend:
+v0.8.0 is an architecture experiment prompted by the v0.6–v0.7 speech-control trade-off. The default ATC speech path no longer uses Realtime speech-to-speech generation. Operational content is represented as typed `AtcMessage` data, rendered deterministically to normative phraseology, converted to a Swedish RT pronunciation script, and synthesized in one neural-TTS call.
 
-```powershell
-flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
-```
+The default pipeline is:
 
-Before committing:
+`typed operational message → deterministic phraseology → pronunciation representation → single-call TTS → audio`
 
-```powershell
-flutter test
-```
+Realtime whole-utterance speech is retained only as an A/B reference for naturalness. The first experiment asks whether deterministic wording plus neural TTS can preserve critical values and the Swedish `Q N Helge` expression without returning to the mechanical segmented speech of v0.6.x.
+
+Warm-up and exact replay caching remain enabled. Learner ASR and the deterministic readback validator are intentionally unchanged in this version.

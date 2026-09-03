@@ -1,3 +1,43 @@
+enum AtcMessageKind { readbackInstruction, frequencyChange }
+
+/// Typed operational message used as the source of truth for ATC speech.
+///
+/// v0.8.0 deliberately stops treating an arbitrary sentence as the speech
+/// source. Operational values live in typed fields; normative wording is
+/// rendered deterministically from those fields.
+class AtcMessage {
+  const AtcMessage({
+    required this.callsign,
+    this.runway,
+    this.qnh,
+    this.squawk,
+    this.contactUnit,
+    this.frequency,
+  });
+
+  final String callsign;
+  final String? runway;
+  final String? qnh;
+  final String? squawk;
+  final String? contactUnit;
+  final String? frequency;
+
+  AtcMessageKind get kind => frequency != null
+      ? AtcMessageKind.frequencyChange
+      : AtcMessageKind.readbackInstruction;
+
+  String get normativeText {
+    final parts = <String>[callsign];
+    if (runway != null) parts.add('bana $runway');
+    if (qnh != null) parts.add('QNH $qnh');
+    if (squawk != null) parts.add('transponder $squawk');
+    if (frequency != null) {
+      parts.add('kontakta ${contactUnit ?? 'ATS'} $frequency');
+    }
+    return '${parts.join(', ')}.';
+  }
+}
+
 class ExpectedReadback {
   const ExpectedReadback({
     required this.callsign,
@@ -21,7 +61,7 @@ class TrainingStep {
     required this.id,
     required this.title,
     required this.instruction,
-    required this.atcTransmission,
+    required this.atcMessage,
     required this.expected,
     this.frequency = '124.500',
     this.coachNote,
@@ -30,7 +70,8 @@ class TrainingStep {
   final String id;
   final String title;
   final String instruction;
-  final String atcTransmission;
+  final AtcMessage atcMessage;
+  String get atcTransmission => atcMessage.normativeText;
   final ExpectedReadback expected;
   final String frequency;
   final String? coachNote;

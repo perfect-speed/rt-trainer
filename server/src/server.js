@@ -492,7 +492,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.7.1-qnh-pronunciation-lock',
+              purpose: 'rt-trainer-v0.8.0-realtime-reference',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -617,7 +617,7 @@ async function generateDeterministicTtsPcm(spokenScript, { reason = 'fallback' }
       'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
       'Läs EXAKT manuset. Lägg inte till, ta bort eller korrigera någon information.',
       'Svenska bokstaveringsord och sifferord ska uttalas precis som de står.',
-      'När talmanuset innehåller ku enn Helge är detta en intern uttalsanvisning för den svenska radiotelefonifrasen Q N Helge. Säg kompakt "ku enn Helge". Byt aldrig ku mot ka eller K.',
+      'När talmanuset innehåller Q N Helge ska bokstaven Q uttalas på svenska, därefter N och ordet Helge. Säg aldrig K N Helge eller K N H.',
       'Behåll ett naturligt men kompakt radiotempo.',
     ].join(' '),
         response_format: 'pcm',
@@ -756,7 +756,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               'Det exakta talmanuset är normativt låst. Säg alla ord och värden i manuset, i samma ordning, och inget annat.',
               'Lägg aldrig till hjälpord som svara, kod, ställ in, sätt, bekräfta eller andra ord som inte står i talmanuset.',
               'Svenska bokstaveringsord ska uttalas naturligt och kompakt som en anropssignal, utan extra paus efter Sigurd Erik.',
-              'När talmanuset innehåller ku enn Helge är detta en intern uttalsanvisning för svenska Q N Helge. Uttala exakt "ku enn Helge" kompakt och naturligt. Säg aldrig ka, K eller KN Helge.',
+              'När talmanuset innehåller Q N Helge ska det uttalas som svenska bokstaven Q, därefter N och ordet Helge. Säg aldrig K N Helge eller K N H.',
               'Sifferord ska vara tydliga men inte överartikulerade. Slutför alltid sista siffran helt.',
               'Du får variera prosodin men inte ordalydelsen eller det operativa innehållet.',
             ].join(' '),
@@ -781,7 +781,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               `NORMATIV REFERENS (ändra inget): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.7.1-qnh-pronunciation-lock', attempt: String(attempt) },
+            metadata: { purpose: 'rt-trainer-v0.8.0-realtime-reference', attempt: String(attempt) },
           },
         }));
         return;
@@ -937,7 +937,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.7.1', speechDefault: 'realtime', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.8.0', speechDefault: 'deterministic-tts', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -949,7 +949,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.7.1', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.8.0', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -1004,7 +1004,8 @@ app.post('/api/speech', async (req, res) => {
   }
 
   const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
-  const engine = req.body?.engine === 'tts' ? 'tts' : 'realtime';
+  const requestedEngine = String(req.body?.engine || 'deterministic');
+  const engine = requestedEngine === 'realtime' ? 'realtime' : 'deterministic';
   const spokenText = typeof req.body?.spokenText === 'string' ? req.body.spokenText.trim().slice(0, 800) : '';
   if (!text) {
     return res.status(400).json({ error: 'Speech text missing.' });
@@ -1027,6 +1028,51 @@ app.post('/api/speech', async (req, res) => {
       res.setHeader('X-RT-Speech-Fallback', cached.fallback ? '1' : '0');
       res.setHeader('X-RT-Speech-Cache', 'HIT');
       return res.send(cached.buffer);
+    }
+
+    if (engine === 'deterministic') {
+      if (!spokenText) return res.status(400).json({ error: 'Deterministic spoken RT script missing.' });
+
+      // v0.8.0 architecture experiment: one deterministic phraseology/pronunciation
+      // script is synthesized in one TTS call. The speech model may realize voice
+      // and prosody, but it receives no authority to select operational values or
+      // add controller wording. Realtime remains available only as an A/B reference.
+      const speech = await client.audio.speech.create({
+        model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+        voice: process.env.OPENAI_TTS_VOICE || 'cedar',
+        input: spokenText,
+        speed: Number(process.env.OPENAI_TTS_SPEED || '1.04'),
+        instructions: [
+          'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
+          'Detta är ett deterministiskt radiotelefonimanus. Läs exakt orden i manuset i samma ordning.',
+          'Lägg aldrig till ord som svara, kod, ställ in, sätt, bekräfta eller andra hjälpord.',
+          'Ändra aldrig anropssignal, bana, QNH-värde, frekvens eller transponderkod.',
+          'När manuset innehåller Q N Helge: uttala bokstaven Q på svenska, därefter N, därefter ordet Helge. Det får inte låta som K N Helge eller K N H.',
+          'Svenska bokstaveringsord ska sägas tydligt men som en sammanhållen flygradioanropssignal, inte som pedagogisk diktamen.',
+          'Sifferord ska vara tydliga, kompakta och rytmiska. Slutför alltid sista siffran.',
+          'Använd naturlig, professionell ATC-prosodi med korta funktionella pauser mellan informationsgrupper.',
+        ].join(' '),
+        response_format: 'mp3',
+      });
+
+      const buffer = Buffer.from(await speech.arrayBuffer());
+      if (!buffer.length) throw new Error('Deterministic TTS returned no audio.');
+      rememberSpeech(cacheKey, { buffer, contentType: 'audio/mpeg', engine: 'deterministic-tts', fallback: false });
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('X-RT-Speech-Engine', 'deterministic-tts');
+      res.setHeader('X-RT-Speech-Fallback', '0');
+      res.setHeader('X-RT-Speech-Cache', 'MISS');
+      console.info('Speech request timing', {
+        requestId,
+        cache: 'MISS',
+        engine: 'deterministic-tts',
+        fallback: false,
+        script: spokenText,
+        uptimeSeconds: Math.round(process.uptime()),
+        totalMs: Date.now() - requestStartedAt,
+      });
+      return res.send(buffer);
     }
 
     if (engine === 'realtime') {
