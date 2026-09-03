@@ -1,43 +1,37 @@
-# RT Trainer v0.9.1 — Prosodic chunking experiment
+# RT Trainer v0.9.2 — Pronunciation chunk experiment
 
 ## Question
+v0.9.1 showed that prosody instructions improved `Q N Helge` and spelled registrations slightly, but they still sounded more segmented than familiar numeric groups such as `1009`.
 
-Can we improve operational speech flow without giving any generative component authority over the operational content?
+The hypothesis for v0.9.2 is that **the TTS input representation itself influences rhythmic grouping more strongly than prompt-only prosody instructions**.
 
-The user observed that v0.9 adds useful radio character, but `Q N Helge` can sound like `Q … N … Helge` and spelled registrations can sound like teaching dictation. In actual RT these are familiar lexical/prosodic units and are normally produced with more internal flow.
+## What changes
+The normative ATC message and the deterministic Swedish RT formatter remain unchanged.
 
-## Frozen baseline
+Immediately before the single TTS call, the backend creates a hidden pronunciation representation:
 
-The following are intentionally unchanged from v0.9.0:
+- `Q N Helge` → `Q-N-Helge`
+- a callsign such as `Sigurd Erik Gustav Ludvig Adam` → `Sigurd-Erik-Gustav-Ludvig-Adam`
 
-1. deterministic Swedish RT script;
-2. one full-utterance neural TTS call;
-3. v0.9 VHF DSP;
-4. clarified digit words;
-5. frontend PTT, ASR and readback validation.
+The hyphens are internal binding cues only. The TTS instruction explicitly says not to pronounce them as words or pauses.
 
-## Experimental change
+## What does not change
+- typed operational values;
+- deterministic phraseology;
+- Swedish clarified digit words;
+- one full-utterance TTS call;
+- v0.9 VHF DSP;
+- learner ASR;
+- validator;
+- exercise set.
 
-Only the TTS prosodic instruction changes.
-
-`Q N Helge` is treated as one cohesive prosodic chunk. The letters remain distinct and Q must remain Swedish Q, but there should be no pedagogical pause between Q, N and Helge.
-
-A full Swedish-spelled callsign is also treated as one identity chunk: clear individual spelling words, but with continuous operational rhythm.
-
-Pauses belong between information groups, not inside these established chunks.
-
-## Hypothesis
-
-**Correctness sits in the representation; naturalness can be improved through grouping and timing.**
-
-## Failure criteria
-
+## Falsification
 The experiment fails if any of the following occurs:
 
-- Q becomes K again;
-- `Q N Helge` loses a component;
-- callsign letters/words are lost or changed;
-- extra lexical material such as `svara` returns;
-- the speech sounds no more fluid, or becomes rushed/less intelligible.
+- Q is again perceived as K;
+- `Q-N-Helge` loses a component;
+- callsign spelling becomes less intelligible;
+- hyphens create audible pauses or unnatural compound-word pronunciation;
+- flow is not meaningfully better than v0.9.1.
 
-If correctness remains stable and internal flow improves, prosodic grouping becomes an explicit layer in the architecture.
+If the gain is only marginal, stop tuning prompt/orthography and test a TTS engine with explicit pronunciation/phoneme control instead.

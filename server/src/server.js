@@ -22,12 +22,53 @@ const upload = multer({
 const speechCache = new Map();
 const SPEECH_CACHE_MAX = Number(process.env.RT_SPEECH_CACHE_MAX || '50');
 
-// v0.9.1 prosodic-chunking experiment. The v0.9 radio DSP is kept
-// identical between CLEAN and RADIO conditions; RADIO applies only deterministic
-// DSP after synthesis. This isolates the effect of channel simulation from voice,
-// wording and prosody.
+// v0.9.2 pronunciation-chunk experiment. The v0.9 radio DSP and deterministic
+// phraseology remain unchanged. The only intentional change is an internal
+// pronunciation representation that binds familiar RT chunks before a single
+// neural TTS call. The normative/display text remains untouched.
 const baseTtsPcmCache = new Map();
 const BASE_TTS_PCM_CACHE_MAX = Number(process.env.RT_BASE_TTS_PCM_CACHE_MAX || '30');
+
+
+
+const SWEDISH_SPELLING_WORDS = new Set([
+  'Adam', 'Bertil', 'Cesar', 'David', 'Erik', 'Filip', 'Gustav', 'Helge',
+  'Ivar', 'Johan', 'Kalle', 'Ludvig', 'Martin', 'Niklas', 'Olof', 'Petter',
+  'Qvintus', 'Rudolf', 'Sigurd', 'Tore', 'Urban', 'Viktor', 'Wilhelm',
+  'Xerxes', 'Yngve', 'Zäta', 'Åke', 'Ärlig', 'Östen',
+]);
+
+// v0.9.2: Build an *internal* pronunciation representation. This is not shown
+// to the learner and does not alter the deterministic phraseology or values.
+// Hyphens are used as binding cues so TTS is more likely to realize familiar
+// RT units as one rhythmic chunk instead of pedagogical word-by-word dictation.
+//
+// Examples:
+//   "Q N Helge" -> "Q-N-Helge"
+//   "Sigurd Erik Gustav Ludvig Adam" -> "Sigurd-Erik-Gustav-Ludvig-Adam"
+//
+// This experiment is deliberately narrow. Digits, wording, DSP and validation
+// are left unchanged so any audible difference can be attributed to the
+// pronunciation representation itself.
+function buildPronunciationChunkScript(spokenText) {
+  let text = String(spokenText || '').trim();
+  if (!text) return text;
+
+  text = text.replace(/\bQ\s+N\s+Helge\b/gi, 'Q-N-Helge');
+
+  const commaIndex = text.indexOf(',');
+  const firstGroup = (commaIndex >= 0 ? text.slice(0, commaIndex) : text).trim();
+  const words = firstGroup.split(/\s+/).filter(Boolean);
+  const isCallsignGroup = words.length >= 3 && words.length <= 5 &&
+    words.every((word) => SWEDISH_SPELLING_WORDS.has(word));
+
+  if (isCallsignGroup) {
+    const bound = words.join('-');
+    text = `${bound}${commaIndex >= 0 ? text.slice(commaIndex) : ''}`;
+  }
+
+  return text;
+}
 
 function baseTtsPcmKey(spokenText) {
   return spokenText || '';
@@ -613,7 +654,7 @@ function generateRealtimeSegment({ fullNormativeText, fullSpokenScript, segment,
               `EXAKT GRUPP ATT SÄGA: ${segment.spoken}`,
             ].join('\n'),
             metadata: {
-              purpose: 'rt-trainer-v0.9.1-realtime-reference',
+              purpose: 'rt-trainer-v0.9.2-realtime-reference',
               segment: String(segment.index + 1),
               segments: String(totalSegments),
             },
@@ -902,7 +943,7 @@ function generateWholeUtteranceRealtime({ normativeText, spokenScript, attempt =
               `NORMATIV REFERENS (ändra inget): ${normativeText}`,
               `EXAKT TALMANUS: ${spokenScript}`,
             ].join('\n'),
-            metadata: { purpose: 'rt-trainer-v0.9.1-realtime-reference', attempt: String(attempt) },
+            metadata: { purpose: 'rt-trainer-v0.9.2-realtime-reference', attempt: String(attempt) },
           },
         }));
         return;
@@ -1058,7 +1099,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.9.1', speechDefault: 'deterministic-tts-radio-dsp-prosodic-chunking', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), version: '0.9.2', speechDefault: 'deterministic-tts-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -1070,7 +1111,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.9.1', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.9.2', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -1115,25 +1156,26 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 
 
 async function getDeterministicBaseTtsPcm(spokenText) {
-  const key = baseTtsPcmKey(spokenText);
+  const pronunciationText = buildPronunciationChunkScript(spokenText);
+  const key = baseTtsPcmKey(pronunciationText);
   const cached = baseTtsPcmCache.get(key);
-  if (cached) return { pcm: cached, cache: 'HIT' };
+  if (cached) return { pcm: cached, cache: 'HIT', pronunciationText };
 
   const speech = await client.audio.speech.create({
     model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
     voice: process.env.OPENAI_TTS_VOICE || 'cedar',
-    input: spokenText,
+    input: pronunciationText,
     speed: Number(process.env.OPENAI_TTS_SPEED || '1.04'),
     instructions: [
       'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
       'Detta är ett deterministiskt radiotelefonimanus. Läs exakt orden i manuset i samma ordning.',
       'Lägg aldrig till ord som svara, kod, ställ in, sätt, bekräfta eller andra hjälpord.',
       'Ändra aldrig anropssignal, bana, QNH-värde, frekvens eller transponderkod.',
-      'När manuset innehåller Q N Helge: uttala bokstaven Q på svenska, därefter N, därefter ordet Helge. Det får inte låta som K N Helge eller K N H.',
-      'VIKTIG PROSODI: Q N Helge är en etablerad svensk radiotelefonifras och ska sägas som EN sammanhängande prosodisk chunk: Q-N-Helge i ett naturligt flyt, utan märkbara pauser mellan Q, N och Helge. Det ska inte låta som bokstavsdiktamen.',
-      'VIKTIG PROSODI: hela anropssignalen med svenska bokstaveringsord ska också behandlas som EN sammanhängande identitetsgrupp. Orden ska vara tydliga men flyta ihop rytmiskt som hos en van pilot eller flygledare, utan pedagogiska pauser mellan varje bokstaveringsord.',
+      'Manuset använder bindestreck som INTERNA UTTALSMARKÖRER i vissa etablerade radiotelefonigrupper. Bindestrecken ska inte uttalas som ord eller pauser; de betyder att gruppen ska sägas sammanhängande.',
+      'När manuset innehåller Q-N-Helge: uttala svensk bokstav Q (ku), direkt följt av svensk bokstav N (enn) och Helge i ett enda naturligt radiotelefoniflöde. Det får inte låta som K N Helge eller K N H.',
+      'När en anropssignal skrivs med bundna svenska bokstaveringsord, till exempel Sigurd-Erik-Gustav-Ludvig-Adam, ska orden fortfarande artikuleras tydligt men rytmiskt som EN identitetsgrupp. Lägg inte in pedagogiska pauser vid bindestrecken.',
       'Sifferord ska vara tydliga, kompakta och rytmiska. Ändra inte deras ordalydelse eller värden. Slutför alltid sista siffran.',
-      'Lägg kort funktionell paus MELLAN informationsgrupper, men inte INNE I de etablerade grupperna Q N Helge eller anropssignalen.',
+      'Lägg kort funktionell paus MELLAN informationsgrupper, men inte INNE I Q-N-Helge eller en bindestreckad anropssignal.',
       'Använd naturlig, professionell svensk ATC-prosodi. Målet är operativt flyt, inte läroboksuppläsning.',
     ].join(' '),
     response_format: 'pcm',
@@ -1141,7 +1183,7 @@ async function getDeterministicBaseTtsPcm(spokenText) {
   const pcm = Buffer.from(await speech.arrayBuffer());
   if (!pcm.length) throw new Error('Deterministic TTS returned no audio.');
   rememberBaseTtsPcm(key, pcm);
-  return { pcm, cache: 'MISS' };
+  return { pcm, cache: 'MISS', pronunciationText };
 }
 
 app.post('/api/speech', async (req, res) => {
@@ -1187,7 +1229,7 @@ app.post('/api/speech', async (req, res) => {
     if (engine === 'radio' || engine === 'clean') {
       if (!spokenText) return res.status(400).json({ error: 'Deterministic spoken RT script missing.' });
 
-      // v0.9.1 isolates radio-channel authenticity from speech generation.
+      // v0.9.2 keeps the v0.9 radio channel fixed while testing an internal pronunciation representation.
       // CLEAN and RADIO share the exact same base TTS PCM whenever the Render
       // process remains alive; RADIO then applies deterministic post-synthesis DSP.
       const base = await getDeterministicBaseTtsPcm(spokenText);
@@ -1195,7 +1237,7 @@ app.post('/api/speech', async (req, res) => {
         ? applyVhfRadioDsp(base.pcm, spokenText, 24000)
         : base.pcm;
       const buffer = pcm16ToWav(outputPcm, 24000, 1);
-      const engineName = engine === 'radio' ? 'deterministic-tts-radio-dsp-prosodic-chunking' : 'deterministic-tts-clean-prosodic-chunking';
+      const engineName = engine === 'radio' ? 'deterministic-tts-radio-dsp-pronunciation-chunking' : 'deterministic-tts-clean-pronunciation-chunking';
 
       rememberSpeech(cacheKey, { buffer, contentType: 'audio/wav', engine: engineName, fallback: false });
       res.setHeader('Content-Type', 'audio/wav');
@@ -1211,6 +1253,7 @@ app.post('/api/speech', async (req, res) => {
         engine: engineName,
         fallback: false,
         script: spokenText,
+        pronunciationScript: base.pronunciationText,
         uptimeSeconds: Math.round(process.uptime()),
         totalMs: Date.now() - requestStartedAt,
       });

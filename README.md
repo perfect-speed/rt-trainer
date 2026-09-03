@@ -1,22 +1,24 @@
-# RT Trainer v0.9.1
+# RT Trainer v0.9.2
 
-## Prosodic chunking experiment
+## Pronunciation chunk experiment
 
-v0.9.1 keeps the successful v0.8 deterministic speech pipeline and the v0.9 VHF radio DSP unchanged. The only intended experimental change is **prosodic grouping inside the TTS call**.
+v0.9.2 keeps the deterministic speech architecture and VHF radio DSP from v0.9.x. The only intended experiment is an **internal pronunciation representation** before the single TTS call.
 
-The working hypothesis is that operational correctness and naturalness can be separated: the deterministic representation owns the words and values, while TTS may control timing and prosody.
+The learner still sees and the validator still uses the same normative content. Internally, familiar RT units are bound with hyphens so the TTS engine is encouraged to realize them as rhythmic chunks rather than word-by-word dictation.
 
-### What changes
+Examples:
 
-- `Q N Helge` remains exactly the same deterministic script, but TTS is instructed to say it as one established radiotelephony chunk without audible pauses between Q, N and Helge.
-- A full callsign such as `Sigurd Erik Gustav Ludvig Adam` is treated as one cohesive identity group rather than pedagogical spelling-word dictation.
-- Short functional pauses remain **between** information groups.
+- `Q N Helge` → `Q-N-Helge`
+- `Sigurd Erik Viktor Petter Tore` → `Sigurd-Erik-Viktor-Petter-Tore`
 
-### What does not change
+Digits are intentionally unchanged in this version because they already sound comparatively cohesive.
 
-- QNH, runway, callsign and transponder values remain deterministic.
-- The clarified Swedish digit forms remain unchanged for this experiment.
-- The v0.9 radio DSP remains unchanged.
-- No audio-token splicing and no additional ASR verifier are introduced.
+## Test focus
+Compare with v0.9.1 and listen for:
 
-The default condition is **RADIO · v0.9.1**. **REN RÖST · v0.8** remains available as a clean reference.
+1. correct and more fluent `Q N Helge`;
+2. more cohesive registration spelling;
+3. no loss of letters, extra words or critical values;
+4. no audible hyphen artifacts.
+
+If the improvement remains small, the next architectural experiment should use a speech engine with explicit pronunciation/phoneme control rather than further prompt tuning.

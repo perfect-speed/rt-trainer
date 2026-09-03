@@ -1,4 +1,4 @@
-# RT Trainer v0.9.1 – web deployment
+# Web deploy — v0.9.2
 
 From the project root on Windows:
 
@@ -6,14 +6,14 @@ From the project root on Windows:
 flutter test
 git status
 git add .
-git commit -m "Add v0.9.1 prosodic chunking experiment"
+git commit -m "Add v0.9.2 pronunciation chunk experiment"
 git push
 ```
 
-Wait until Render has deployed the backend. Its health response should report:
+Wait for the Render backend deployment to finish. Verify that `/health` reports:
 
-- `version: 0.9.1`
-- `speechDefault: deterministic-tts-radio-dsp-prosodic-chunking`
+- `version: 0.9.2`
+- `speechDefault: deterministic-tts-radio-dsp-pronunciation-chunking`
 
 Then run locally:
 
@@ -21,6 +21,4 @@ Then run locally:
 flutter run -d chrome --web-port 5000 --dart-define=RT_API_URL=https://rt-trainer-api.onrender.com
 ```
 
-The default chip should show **RADIO · v0.9.1**. Listen especially to `Q N Helge` and the full registration. The experiment changes their prosodic grouping only; QNH/callsign values and the v0.9 radio DSP should remain unchanged.
-
-For a public web build, use the existing `deploy_web.ps1`, then commit the regenerated `docs/` directory and push it.
+The default speech condition should display `RADIO · v0.9.2`. `REN RÖST · v0.9.2` uses the same pronunciation representation without VHF DSP.
