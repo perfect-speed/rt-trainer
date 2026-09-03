@@ -102,7 +102,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('RT TRAINER', style: TextStyle(fontSize: mobile ? 20 : 24, fontWeight: FontWeight.w900, letterSpacing: .8)),
-                                      const Text('Test v0.10.1 · Azure A/B-jämförelse', style: TextStyle(color: AppTheme.textMuted)),
+                                      const Text('Test v0.11.0 · OpenAI lokal rytm', style: TextStyle(color: AppTheme.textMuted)),
                                     ],
                                   ),
                                 ),
@@ -116,7 +116,7 @@ class _DemoWelcomeScreenState extends State<DemoWelcomeScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Syftet med denna version är att jämföra tre röstvillkor på exakt samma ATC-replik: Azure med 90 ms explicit timing, Azure utan explicit timing och den frysta v0.9.2-baslinjen. Du kan fortfarande svara med PTT och prova den vanliga återkopplingen.',
+                      'Vi går tillbaka till den frysta v0.9.2-rösten. FLOW v0.11 testar en enda smal förändring: anropssignal och Q N Helge syntetiseras som egna radiogrupper med något högre lokalt tempo. Resten av fraseologin och radio-DSP:n är oförändrade.',
                       style: TextStyle(fontSize: 16, height: 1.45),
                     ),
                     const SizedBox(height: 22),

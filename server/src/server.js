@@ -1204,7 +1204,7 @@ async function generateSegmentedRealtimeSpeech(normativeText, spokenScript) {
 
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.10.1', speechDefault: 'azure-ssml-radio-dsp-explicit-boundary-control', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, openaiConfigured: Boolean(client), azureSpeechConfigured, azureSpeechRegion, azureTtsVoice, azureRtBreakMs, version: '0.11.0', speechDefault: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', candidateSpeech: 'openai-v0.11-local-group-flow-radio-dsp', baselineSpeech: 'openai-v0.9.2-radio-dsp-pronunciation-chunking', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // Lightweight warm-up endpoint. On Render Free this wakes the Node service
@@ -1216,7 +1216,7 @@ app.get('/api/warmup', (_req, res) => {
     cacheEntries: speechCache.size,
   });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, version: '0.10.1', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ ok: true, version: '0.11.0', azureSpeechConfigured, uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
@@ -1291,6 +1291,69 @@ async function getOpenAiBaselineTtsPcm(spokenText) {
   return { pcm, cache: 'MISS', pronunciationText };
 }
 
+
+function classifyRtFlowSegment(segment) {
+  const clean = String(segment || '').trim().replace(/[.!?]+$/g, '').trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length >= 3 && words.length <= 5 && words.every((word) => SWEDISH_SPELLING_WORDS.has(word))) {
+    return 'callsign';
+  }
+  if (/^Q\s+N\s+Helge\b/i.test(clean)) return 'qnh';
+  return 'normal';
+}
+
+async function synthesizeOpenAiRtFlowSegment(segment, kind) {
+  const clean = String(segment || '').trim();
+  if (!clean) return Buffer.alloc(0);
+  const speed = kind === 'callsign'
+    ? Number(process.env.OPENAI_RT_CALLSIGN_SPEED || '1.12')
+    : kind === 'qnh'
+      ? Number(process.env.OPENAI_RT_QNH_SPEED || '1.10')
+      : Number(process.env.OPENAI_TTS_SPEED || '1.04');
+
+  const focus = kind === 'callsign'
+    ? 'Detta segment är en anropssignal. Uttala bokstaveringsorden tydligt men i ett sammanhängande identitetsflöde, utan pedagogiska pauser mellan orden.'
+    : kind === 'qnh'
+      ? 'Detta segment börjar med Q N Helge. Uttala svensk Q, svensk N och Helge kompakt som en etablerad radiotelefonigrupp; gör ingen extra paus mellan Q och N.'
+      : 'Behåll naturligt, kompakt svenskt radiotempo.';
+
+  const speech = await client.audio.speech.create({
+    model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+    voice: process.env.OPENAI_TTS_VOICE || 'cedar',
+    input: clean,
+    speed,
+    instructions: [
+      'Tala på svenska som en erfaren svensk flygledare i verklig VHF-radiotrafik.',
+      'Läs exakt orden i segmentet i samma ordning. Lägg aldrig till eller ändra operativ information.',
+      'Svenska bokstaveringsord och sifferord ska uttalas precis som de står.',
+      focus,
+      'Undvik läroboksuppläsning. Artikulationen ska vara tydlig men rytmen operativ och sammanhängande.',
+    ].join(' '),
+    response_format: 'pcm',
+  });
+  return Buffer.from(await speech.arrayBuffer());
+}
+
+async function getOpenAiFlowTtsPcm(spokenText) {
+  const segments = String(spokenText || '').split(',').map((v) => v.trim()).filter(Boolean);
+  const key = `flow-v011|${spokenText}`;
+  const cached = baseTtsPcmCache.get(key);
+  if (cached) return { pcm: cached, cache: 'HIT', segments };
+
+  const parts = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    const kind = classifyRtFlowSegment(segment);
+    const pcm = await synthesizeOpenAiRtFlowSegment(segment, kind);
+    if (!pcm.length) throw new Error(`OpenAI RT-flow segment returned no audio (${kind}).`);
+    parts.push(pcm);
+    if (i < segments.length - 1) parts.push(pcmSilence(Number(process.env.OPENAI_RT_GROUP_GAP_MS || '70')));
+  }
+  const pcm = Buffer.concat(parts);
+  rememberBaseTtsPcm(key, pcm);
+  return { pcm, cache: 'MISS', segments };
+}
+
 app.post('/api/speech', async (req, res) => {
   const requestStartedAt = Date.now();
   const requestId = Math.random().toString(36).slice(2, 9);
@@ -1299,12 +1362,14 @@ app.post('/api/speech', async (req, res) => {
     uptimeSeconds: Math.round(process.uptime()),
   });
   const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 500) : '';
-  const requestedEngine = String(req.body?.engine || 'azure-radio');
+  const requestedEngine = String(req.body?.engine || 'baseline-radio');
   const engine = requestedEngine === 'realtime'
     ? 'realtime'
-    : (requestedEngine === 'baseline-radio' || requestedEngine === 'baseline'
-        ? 'baseline-radio'
-        : (requestedEngine === 'azure-plain-radio' ? 'azure-plain-radio' : 'azure-radio'));
+    : (requestedEngine === 'flow-radio' || requestedEngine === 'flow'
+        ? 'flow-radio'
+        : (requestedEngine === 'baseline-radio' || requestedEngine === 'baseline'
+            ? 'baseline-radio'
+            : (requestedEngine === 'azure-plain-radio' ? 'azure-plain-radio' : 'azure-radio')));
   const spokenText = typeof req.body?.spokenText === 'string' ? req.body.spokenText.trim().slice(0, 800) : '';
   if (!text) {
     return res.status(400).json({ error: 'Speech text missing.' });
@@ -1329,7 +1394,7 @@ app.post('/api/speech', async (req, res) => {
       return res.send(cached.buffer);
     }
 
-    if (engine === 'azure-radio' || engine === 'azure-plain-radio' || engine === 'baseline-radio') {
+    if (engine === 'azure-radio' || engine === 'azure-plain-radio' || engine === 'baseline-radio' || engine === 'flow-radio') {
       if (!spokenText) return res.status(400).json({ error: 'Deterministic spoken RT script missing.' });
 
       let base;
@@ -1340,6 +1405,10 @@ app.post('/api/speech', async (req, res) => {
         engineName = explicitControl
           ? 'azure-ssml-radio-dsp-explicit-boundary-control'
           : 'azure-plain-radio-dsp-control';
+      } else if (engine === 'flow-radio') {
+        if (!client) return res.status(503).json({ error: 'OpenAI API is not configured for the v0.11 flow candidate.' });
+        base = await getOpenAiFlowTtsPcm(spokenText);
+        engineName = 'openai-v0.11-local-group-flow-radio-dsp';
       } else {
         if (!client) return res.status(503).json({ error: 'OpenAI API is not configured for the v0.9.2 baseline.' });
         base = await getOpenAiBaselineTtsPcm(spokenText);
@@ -1369,6 +1438,7 @@ app.post('/api/speech', async (req, res) => {
         azureControl: engine === 'azure-radio' ? 'explicit' : (engine === 'azure-plain-radio' ? 'plain' : undefined),
         azureVoice: engine === 'azure-radio' || engine === 'azure-plain-radio' ? azureTtsVoice : undefined,
         pronunciationScript: engine === 'baseline-radio' ? base.pronunciationText : undefined,
+        flowSegments: engine === 'flow-radio' ? base.segments : undefined,
         uptimeSeconds: Math.round(process.uptime()),
         totalMs: Date.now() - requestStartedAt,
       });

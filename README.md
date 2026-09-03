@@ -1,11 +1,11 @@
-# RT Trainer v0.10.1
+# RT Trainer v0.11.0
 
-## v0.10.1 change
+## v0.11.0 change
 
 The speech synthesis experiment itself is unchanged. This release makes the A/B test easier to run now that Azure Speech is configured: selecting any speech condition immediately replays the current ATC utterance, so the operational message, deterministic phraseology and radio DSP remain constant while only synthesis/prosody changes.
 
 
-v0.10.1 is a controlled **explicit prosodic boundary** experiment. The operational message model, deterministic Swedish phraseology, learner ASR/validation, and the v0.9 VHF radio DSP are frozen.
+v0.11.0 is a controlled **explicit prosodic boundary** experiment. The operational message model, deterministic Swedish phraseology, learner ASR/validation, and the v0.9 VHF radio DSP are frozen.
 
 The experiment adds Azure Speech SSML as a controllable timing layer and exposes three post-DSP listening conditions:
 

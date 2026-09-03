@@ -16,7 +16,7 @@ import '../widgets/status_chip.dart';
 
 enum PracticeMode { drillReadback, scenario }
 
-enum SpeechEngine { azureProsodyRadio, azurePlainRadio, openAiBaselineRadio }
+enum SpeechEngine { openAiBaselineRadio, openAiFlowRadio }
 
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
@@ -121,7 +121,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
   bool _showAtcPromptText = false;
   bool _isSpeakingAtc = false;
   String? _speechError;
-  SpeechEngine _speechEngine = SpeechEngine.azureProsodyRadio;
+  SpeechEngine _speechEngine = SpeechEngine.openAiBaselineRadio;
   final Map<String, List<int>> _speechCache = <String, List<int>>{};
 
   List<TrainingStep> get _steps => _mode == PracticeMode.drillReadback ? _drillSteps : _scenarioSteps;
@@ -209,11 +209,9 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   Future<void> _speakCurrentAtc() async {
     if (_isSpeakingAtc || !_api.isConfigured) return;
-    // v0.10.1 is a controlled A/B experiment. Both conditions use the same
-    // deterministic spoken script and the same frozen v0.9 radio DSP. The only
-    // intended difference is the synthesis/prosody layer: Azure SSML timing
-    // versus the v0.9.2 OpenAI TTS pronunciation-chunk baseline.
-    // LYSSNA IGEN replays the exact same waveform for each condition.
+    // v0.11 compares the frozen v0.9.2 OpenAI baseline with a narrow local-flow
+    // candidate. Same deterministic spoken script, voice family and frozen v0.9
+    // radio DSP; only local pacing of callsign/QNH groups changes.
     final spokenScript = _speechFormatter.format(_step.atcTransmission);
     final speechText = spokenScript;
     final cacheKey = _speechCacheKey(spokenScript);
@@ -229,9 +227,8 @@ class _TrainerScreenState extends State<TrainerScreen> {
               text: speechText,
               spokenText: spokenScript,
               engine: switch (_speechEngine) {
-                SpeechEngine.azureProsodyRadio => 'azure-radio',
-                SpeechEngine.azurePlainRadio => 'azure-plain-radio',
                 SpeechEngine.openAiBaselineRadio => 'baseline-radio',
+                SpeechEngine.openAiFlowRadio => 'flow-radio',
               },
             );
 
@@ -610,26 +607,18 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
                 ChoiceChip(
-                  label: const Text('AZURE · 90 ms'),
-                  selected: _speechEngine == SpeechEngine.azureProsodyRadio,
-                  onSelected: _isSpeakingAtc ? null : (selected) {
-                    if (selected) _selectSpeechEngine(SpeechEngine.azureProsodyRadio);
-                  },
-                  visualDensity: VisualDensity.compact,
-                ),
-                ChoiceChip(
-                  label: const Text('AZURE · PLAIN'),
-                  selected: _speechEngine == SpeechEngine.azurePlainRadio,
-                  onSelected: _isSpeakingAtc ? null : (selected) {
-                    if (selected) _selectSpeechEngine(SpeechEngine.azurePlainRadio);
-                  },
-                  visualDensity: VisualDensity.compact,
-                ),
-                ChoiceChip(
                   label: const Text('BASE · v0.9.2'),
                   selected: _speechEngine == SpeechEngine.openAiBaselineRadio,
                   onSelected: _isSpeakingAtc ? null : (selected) {
                     if (selected) _selectSpeechEngine(SpeechEngine.openAiBaselineRadio);
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+                ChoiceChip(
+                  label: const Text('FLOW · v0.11'),
+                  selected: _speechEngine == SpeechEngine.openAiFlowRadio,
+                  onSelected: _isSpeakingAtc ? null : (selected) {
+                    if (selected) _selectSpeechEngine(SpeechEngine.openAiFlowRadio);
                   },
                   visualDensity: VisualDensity.compact,
                 ),
@@ -638,7 +627,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'A/B-test: byt röstläge ovan. Samma ATC-replik spelas upp direkt så att du kan jämföra pauser, bokstavering och Q N Helge.',
+                'A/B-test inom samma OpenAI-röst: BASE är den frysta v0.9.2. FLOW v0.11 ändrar bara lokal rytm för anropssignal och Q N Helge; samma fraseologi och radio-DSP används.',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: veryCompact ? 10 : 11),
               ),
             ),
